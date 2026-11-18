@@ -6,8 +6,11 @@ only datastore and lives in a named volume.
 
 ## Build and configuration
 
-Compose builds the image from the `Dockerfile`. Copy the example environment file
-and fill in real values before the first start:
+Compose builds the image from the `Dockerfile`. Production configuration is
+mandatory: the base `compose.yaml` requires `.env` and refuses to start without it,
+so the built-in development secret and an unmounted database path can never be used
+by accident. Copy the example environment file and fill in real values before the
+first start:
 
 ```sh
 cp .env.example .env
@@ -93,8 +96,9 @@ tag and database backup together.
 ## Local development
 
 `compose.development.yaml` is an overlay that enables debug mode, binds the dev
-server to `127.0.0.1:8000` only, and needs no `.env` (dependencies come from
-`uv sync` during the image build):
+server to `127.0.0.1:8000` only, and makes `.env` optional (dependencies come from
+`uv sync` during the image build). It resets the base file's required `env_file`,
+so `.env` is read only if you create one:
 
 ```sh
 uv sync --frozen

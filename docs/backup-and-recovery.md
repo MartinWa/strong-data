@@ -38,10 +38,23 @@ confirm sessions and exercises are present.
 
 ## Restore
 
-Restoring replaces the live database. Take a current backup first, then stop the
-service so nothing can write to SQLite while the file is replaced. `docker compose cp`
-creates the file as root, so fix ownership in a one-off container running as root;
-the non-root app user cannot do this itself. Then start the service again:
+Restoring replaces the live database. Take a current backup first. On a fresh host
+there is no container to copy into, so set up configuration, build the image and
+create the destination container before copying anything. Production requires a
+real `.env` (see `docs/deployment.md`); without it Compose refuses to create the
+container:
+
+```sh
+cp .env.example .env
+# edit .env: fresh STRONG_SECRET_KEY, your STRONG_ALLOWED_HOSTS, keep STRONG_DB_PATH
+docker compose build web
+docker compose create web
+```
+
+Stop the service so nothing can write to SQLite while the file is replaced.
+`docker compose cp` creates the file as root, so fix ownership in a one-off
+container running as root; the non-root app user cannot do this itself. Then start
+the service again:
 
 ```sh
 docker compose stop web

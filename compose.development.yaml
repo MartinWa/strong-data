@@ -1,5 +1,8 @@
 services:
   web:
+    env_file: !reset
+      - path: .env
+        required: false
     environment:
       STRONG_DEBUG: "true"
       STRONG_SECRET_KEY: development-only-not-for-production
