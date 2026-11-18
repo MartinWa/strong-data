@@ -72,7 +72,14 @@ jobs:
         run: test "$(docker run --rm strong-data:ci id -u)" != "0"
       - name: Validate compose files
         run: |
+          cp .env.example .env
+          trap 'rm -f .env' EXIT
           docker compose -f compose.yaml config -q
+          rm -f .env
+          if docker compose -f compose.yaml config -q 2>/dev/null; then
+            echo "Production compose must require .env" >&2
+            exit 1
+          fi
           docker compose -f compose.yaml -f compose.development.yaml config -q
       - name: Verify the image serves the app
         run: |
