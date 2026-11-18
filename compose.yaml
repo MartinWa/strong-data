@@ -1,0 +1,16 @@
+services:
+  web:
+    build:
+      context: .
+    image: strong-data:latest
+    restart: unless-stopped
+    env_file:
+      - path: .env
+        required: true
+    volumes:
+      - data:/app/data
+    expose:
+      - "8000"
+
+volumes:
+  data:

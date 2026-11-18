@@ -3,6 +3,28 @@
 The API is read-only, versioned and owner-scoped. It is served at `/api/v1/` by
 django-ninja. A generated OpenAPI schema is available at `GET /api/v1/openapi.json`.
 
+## Endpoints
+
+| Group | Paths |
+| --- | --- |
+| Meta | `/healthz`, `/me`, `/openapi.json` |
+| Reference | `/programs`, `/exercises`, `/muscle-groups` |
+| Summary | `/summary` |
+| Time series | `/series/sessions`, `/series/volume`, `/series/volume-per-session`, `/series/training-time` |
+| Breakdowns | `/breakdown/weekday`, `/breakdown/program`, `/breakdown/muscle`, `/breakdown/exercises` |
+| Exercise | `/exercises/{name}/progress`, `/exercises/{name}/records`, `/exercises/{name}/sets` |
+| Records | `/records/est-1rm`, `/records/bodyweight` |
+| Yearly | `/yearly`, `/yearly/pace` |
+| Raw | `/sessions`, `/sessions/{id}`, `/sets` |
+
+The generated schema is the machine-readable counterpart of this document. Fetch it
+with a bearer token (it is not anonymous):
+
+```sh
+curl -fsS -H "Authorization: Bearer <secret>" \
+  https://workouts.example.com/api/v1/openapi.json
+```
+
 ## Conventions
 
 - **Auth.** Every endpoint except `GET /api/v1/healthz` requires

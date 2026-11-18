@@ -147,3 +147,7 @@ def tokens(request):
 def revoke_token(request, pk):
     ApiToken.objects.filter(owner=request.user, pk=pk).update(revoked_at=timezone.now())
     return redirect("tokens")
+
+
+def api_reference(request):
+    return render(request, "workouts/api_reference.html")

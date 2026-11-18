@@ -1,0 +1,41 @@
+{% extends "base.html" %}
+
+{% block title %}API reference — strong-data{% endblock %}
+
+{% block content %}
+<h1>API reference</h1>
+<p>
+  The read-only API is served at <code>/api/v1/</code>. Create a named token on the
+  <a href="{% url 'tokens' %}">Tokens</a> screen and send it on every request:
+</p>
+<pre>Authorization: Bearer &lt;secret&gt;</pre>
+<p>
+  Data is scoped to the token's owner. Responses carry <code>contract_version</code>
+  and <code>generated_at</code>, and errors use
+  <code>{"error": {"code", "message", "details"}}</code>. The anonymous liveness
+  probe is <a href="{{ api_health_url }}">{{ api_health_url }}</a>; every other
+  endpoint requires the bearer token.
+</p>
+
+<h2>Endpoints</h2>
+<table>
+  <tr><th>Group</th><th>Paths</th></tr>
+  <tr><td>Meta</td><td><code>/healthz</code>, <code>/me</code>, <code>/openapi.json</code></td></tr>
+  <tr><td>Reference</td><td><code>/programs</code>, <code>/exercises</code>, <code>/muscle-groups</code></td></tr>
+  <tr><td>Summary</td><td><code>/summary</code></td></tr>
+  <tr><td>Time series</td><td><code>/series/sessions</code>, <code>/series/volume</code>, <code>/series/volume-per-session</code>, <code>/series/training-time</code></td></tr>
+  <tr><td>Breakdowns</td><td><code>/breakdown/weekday</code>, <code>/breakdown/program</code>, <code>/breakdown/muscle</code>, <code>/breakdown/exercises</code></td></tr>
+  <tr><td>Exercise</td><td><code>/exercises/{name}/progress</code>, <code>/exercises/{name}/records</code>, <code>/exercises/{name}/sets</code></td></tr>
+  <tr><td>Records</td><td><code>/records/est-1rm</code>, <code>/records/bodyweight</code></td></tr>
+  <tr><td>Yearly</td><td><code>/yearly</code>, <code>/yearly/pace</code></td></tr>
+  <tr><td>Raw</td><td><code>/sessions</code>, <code>/sessions/{id}</code>, <code>/sets</code></td></tr>
+</table>
+
+<h2>Machine-readable schema</h2>
+<p>
+  The generated OpenAPI schema is at <code>{{ api_schema_url }}</code>. Browser
+  navigation sends no bearer token, so opening it directly returns 401; fetch it
+  with the token instead. The full endpoint-by-endpoint contract is in the
+  repository's <code>docs/api.md</code>.
+</p>
+{% endblock %}
