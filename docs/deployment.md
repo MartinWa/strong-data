@@ -106,6 +106,22 @@ docker compose up -d
 Migrations run automatically on start. To roll back, point `STRONG_IMAGE` back to
 the previous image tag and restore the database backup together.
 
+### Upgrading from pre-release images
+
+Databases created by images built before the non-root UID was fixed at 1000 are
+owned by a different, system-chosen UID, so write access to the existing data
+volume is lost after upgrading. Run a one-time ownership migration with only
+the ownership capability granted, while the service is stopped:
+
+```sh
+docker compose stop web
+docker compose run --rm --user 0:0 --cap-add CHOWN web chown -R 1000:1000 /app/data
+docker compose up -d
+```
+
+If the app fails with a database permission error right after an upgrade, this
+migration is the fix; it is idempotent and never needed for fresh data volumes.
+
 ## Local development
 
 `compose.development.yaml` is a standalone development stack. It builds the

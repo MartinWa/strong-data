@@ -84,3 +84,10 @@ def test_restore_docs_create_container_before_copying_backup():
     assert create < copy
     assert "cp .env.example .env" in text[:create]
     assert "docker compose build web" in text[:create]
+
+
+def test_recovery_chown_commands_grant_only_ownership():
+    for document in ("docs/backup-and-recovery.md", "docs/deployment.md"):
+        text = (REPO_ROOT / document).read_text(encoding="utf-8")
+
+        assert "--user 0:0 --cap-add CHOWN web chown" in text

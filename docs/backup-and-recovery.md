@@ -53,13 +53,14 @@ docker compose create web
 
 Stop the service so nothing can write to SQLite while the file is replaced.
 `docker compose cp` creates the file as root, so fix ownership in a one-off
-container running as root; the non-root app user cannot do this itself. Then start
-the service again:
+container running as root with only the ownership capability granted. The
+deployed service drops every Linux capability, and the non-root app user
+cannot change ownership itself. Then start the service again:
 
 ```sh
 docker compose stop web
 docker compose cp ./backup.sqlite3 web:/app/data/strong.sqlite3
-docker compose run --rm --user root web chown 1000:1000 /app/data/strong.sqlite3
+docker compose run --rm --user 0:0 --cap-add CHOWN web chown 1000:1000 /app/data/strong.sqlite3
 docker compose start web
 ```
 
