@@ -85,7 +85,7 @@ USE_I18N = True
 USE_TZ = True
 
 STATIC_URL = "static/"
-STATIC_ROOT = BASE_DIR / "staticfiles"
+STATIC_ROOT = Path(os.environ.get("STRONG_STATIC_ROOT") or BASE_DIR / "staticfiles")
 STATIC_ROOT.mkdir(exist_ok=True)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"

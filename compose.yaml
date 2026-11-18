@@ -1,16 +1,33 @@
+# Installation-specific values come from private .env configuration.
 services:
   web:
+    image: "${STRONG_IMAGE:?Set a tested local or released image tag or digest}"
     build:
       context: .
-    image: strong-data:latest
-    restart: unless-stopped
-    env_file:
-      - path: .env
-        required: true
+      target: production
+    env_file: "${STRONG_ENV_FILE:-.env}"
+    environment:
+      STRONG_DB_PATH: /app/data/strong.sqlite3
     volumes:
       - data:/app/data
-    expose:
-      - "8000"
-
+    networks:
+      - managed-proxy
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=536870912,mode=1777
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+networks:
+  managed-proxy:
+    external: true
+    name: "${PROXY_NETWORK:?Set the existing private proxy network}"
 volumes:
   data:

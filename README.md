@@ -12,8 +12,9 @@ server-rendered HTMX web UI, and a versioned, owner-scoped bearer-token JSON API
 ## Run with Docker
 
 The image runs as a non-root user and publishes no ports; put it behind your own
-TLS reverse proxy. Compose builds it, applies migrations and serves the app with
-waitress, with SQLite on a named volume.
+TLS reverse proxy on a private Docker network. Compose builds it, applies
+migrations and serves the app with waitress, with SQLite on a named volume.
+Release tags publish a tested, attested image to GHCR.
 
 ```sh
 cp .env.example .env
@@ -23,8 +24,7 @@ docker compose up -d --build
 For a local dev server with no `.env` required:
 
 ```sh
-uv sync --frozen
-docker compose -f compose.yaml -f compose.development.yaml up --build
+docker compose -f compose.development.yaml up --build
 ```
 
 ## Documentation
@@ -47,8 +47,10 @@ Work is delivered in phases, in order:
   and the private-data guard.
 - **P1 — Parse and store**: CSV parsing, models and migrations, and the import flow.
 - **P2 — API**: the versioned, owner-scoped JSON API and its published contract.
-- **P3 — Package and operate** (complete): container, compose files, deployment and
-  backup docs, version/footer links, API reference and full CI.
+- **P3 — Package and operate** (complete): container with dev-only tooling excluded from
+  the production image, compose files, deployment and backup docs, version/footer links,
+  API reference, hardened CI (lockfile, dependency and image auditing) and an attested
+  tag-based release pipeline to GHCR.
 - **P4 — Verification**: end-to-end checks on synthetic data and a PII scan.
 
 Target the current phase and discuss larger changes in an issue first. The detailed

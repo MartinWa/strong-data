@@ -5,6 +5,8 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+  schedule:
+    - cron: "23 6 * * 1"
 
 permissions:
   contents: read
@@ -19,12 +21,13 @@ concurrency:
 
 env:
   UV_VERSION: "0.13.9"
+  DOCKER_BUILD_RECORD_UPLOAD: "false"
 
 jobs:
   checks:
     name: Checks (Linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -34,66 +37,113 @@ jobs:
         uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
         with:
           version: ${{ env.UV_VERSION }}
-          enable-cache: true
-      - name: Install Python
-        run: uv python install
-      - name: Install dependencies
-        run: uv sync --frozen
+          enable-cache: false
       - name: Check dependency lockfile
         run: uv lock --check
-      - name: Check repository hygiene
-        run: uv run python tools/check_no_private_data.py
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build development and test image
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: development
+          load: true
+          push: false
+          provenance: false
+          tags: strong-data:development
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          cache-from: type=gha,scope=ci-development
+          cache-to: type=gha,scope=ci-development,mode=max
+          github-token: ""
       - name: Lint and check formatting
         run: |
-          uv run ruff check .
-          uv run ruff format --check .
-      - name: Run tests
-        run: uv run pytest -q
+          docker compose -f compose.development.yaml run --rm web ruff check .
+          docker compose -f compose.development.yaml run --rm web ruff format --check .
+      - name: Check Django and migration drift
+        run: |
+          docker compose -f compose.development.yaml run --rm web python manage.py check --database default
+          docker compose -f compose.development.yaml run --rm web python manage.py makemigrations --check --dry-run
+      - name: Check repository hygiene
+        run: docker compose -f compose.development.yaml run --rm web python tools/check_no_private_data.py
+      - name: Check the clean development startup path
+        run: |
+          docker compose -f compose.development.yaml up -d --no-build web
+          attempts=60
+          until docker compose -f compose.development.yaml exec -T web python tools/healthcheck.py; do
+            attempts=$((attempts - 1))
+            test "$attempts" -gt 0
+            sleep 1
+          done
+          docker compose -f compose.development.yaml exec -T web python manage.py migrate --check
+      - name: Run application tests
+        run: docker compose -f compose.development.yaml run --rm web pytest -q
+      - name: Validate compose files
+        run: |
+          cp .env.example .env
+          trap 'rm -f .env' EXIT
+          docker compose config -q
+          rm -f .env
+          if docker compose config -q 2>/dev/null; then
+            echo "Production compose must require .env" >&2
+            exit 1
+          fi
+          docker compose -f compose.development.yaml config -q
+      - name: Stop development containers
+        if: always()
+        run: docker compose -f compose.development.yaml down
 
   container:
     name: Container (Linux)
     runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 45
     steps:
       - name: Check out source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build the non-root image
-        run: docker build -t strong-data:ci .
-      - name: Verify checks inside the container
+      - name: Validate workflow syntax
         run: |
-          docker run --rm strong-data:ci uv run pytest -q
-          docker run --rm strong-data:ci uv run ruff check .
-          docker run --rm strong-data:ci uv run ruff format --check .
-          docker run --rm strong-data:ci uv run python tools/check_no_private_data.py
-          docker run --rm strong-data:ci uv lock --check
+          curl --fail --silent --show-error --location --retry 3 \
+            https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_linux_amd64.tar.gz \
+            --output "$RUNNER_TEMP/actionlint.tar.gz"
+          printf '%s  %s\n' '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8' \
+            "$RUNNER_TEMP/actionlint.tar.gz" | sha256sum --check
+          tar -xzf "$RUNNER_TEMP/actionlint.tar.gz" -C "$RUNNER_TEMP" actionlint
+          "$RUNNER_TEMP/actionlint" -color
+      - name: Set up uv for dependency auditing
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
+          enable-cache: false
+      - name: Audit locked Python dependencies
+        run: |
+          uv export --locked --no-emit-project --format requirements-txt \
+            --output-file "$RUNNER_TEMP/audit-requirements.txt" > /dev/null
+          uvx --python 3.14 --from pip-audit==2.10.1 pip-audit --disable-pip --strict \
+            --progress-spinner off -r "$RUNNER_TEMP/audit-requirements.txt"
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: Build production image without publishing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          target: production
+          load: true
+          push: false
+          provenance: false
+          tags: strong-data:ci
+          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
+          cache-from: type=gha,scope=ci-production
+          cache-to: type=gha,scope=ci-production,mode=max
+          github-token: ""
+      - name: Verify non-root startup, automatic migrations and hardened serving
+        run: |
+          docker run --rm --network none --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true --tmpfs /tmp \
+            --env STRONG_SECRET_KEY=synthetic-ci-container-key-never-for-runtime-00000000000000000 \
+            --env STRONG_ALLOWED_HOSTS=127.0.0.1 \
+            strong-data:ci python -m tools.check_production
       - name: Verify the image runs as non-root
         run: test "$(docker run --rm strong-data:ci id -u)" != "0"
-      - name: Validate compose files
-        run: |
-          cp .env.example .env
-          trap 'rm -f .env' EXIT
-          docker compose -f compose.yaml config -q
-          rm -f .env
-          if docker compose -f compose.yaml config -q 2>/dev/null; then
-            echo "Production compose must require .env" >&2
-            exit 1
-          fi
-          docker compose -f compose.yaml -f compose.development.yaml config -q
-      - name: Verify the image serves the app
-        run: |
-          docker run -d --name strong-data-smoke -p 127.0.0.1:8000:8000 \
-            -e STRONG_SECRET_KEY=ci-test-only \
-            -e STRONG_ALLOWED_HOSTS=localhost,127.0.0.1 \
-            -e STRONG_DB_PATH=/app/data/strong.sqlite3 \
-            strong-data:ci
-          for _ in $(seq 1 30); do
-            curl -fsS http://127.0.0.1:8000/api/v1/healthz && break
-            sleep 1
-          done
-          curl -fsS http://127.0.0.1:8000/api/v1/healthz
-          docker logs strong-data-smoke
-      - name: Clean up smoke container
-        if: always()
-        run: docker rm -f strong-data-smoke || true
+      - name: Audit the production image
+        run: bash tools/audit_image.sh strong-data:ci
