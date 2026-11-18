@@ -11,4 +11,5 @@ urlpatterns = [
     path("corrections/", views.corrections, name="corrections"),
     path("tokens/", views.tokens, name="tokens"),
     path("tokens/<int:pk>/revoke/", views.revoke_token, name="revoke_token"),
+    path("api-reference/", views.api_reference, name="api_reference"),
 ]

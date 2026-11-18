@@ -40,8 +40,17 @@ def test_footer_shows_version_and_api_links(client):
 
     assert response.status_code == 200
     assert app_version().encode() in response.content
-    assert b"/api/v1/openapi.json" in response.content
+    assert b"/api-reference/" in response.content
     assert b"/api/v1/healthz" in response.content
+
+
+def test_api_reference_is_readable_without_a_token(client):
+    response = client.get(reverse("api_reference"))
+
+    assert response.status_code == 200
+    assert b"/series/volume" in response.content
+    assert b"/api/v1/openapi.json" in response.content
+    assert b"returns 401" in response.content
 
 
 @pytest.mark.django_db

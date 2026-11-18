@@ -21,10 +21,12 @@ cp .env.example .env
 | `STRONG_DB_PATH` | SQLite path inside the container; keep the default `/app/data/strong.sqlite3` so it lands on the data volume. |
 | `STRONG_CSRF_TRUSTED_ORIGINS` | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
 | `STRONG_PORT` | Listen port inside the container (default `8000`). |
+| `STRONG_TRUSTED_PROXY` | Address allowed to set forwarding headers. Defaults to `*` because the app publishes no ports and is reachable only from the proxy network; set it to the proxy's container address to restrict this. |
 
-The application trusts the proxy's `X-Forwarded-Proto: https` header, so set it on
-every forwarded request. Keep `.env` private: it is gitignored, excluded from the
-image build context, and must never be committed.
+Waitress trusts `X-Forwarded-Proto` from that address so Django sees `https` and
+HTTPS form submissions pass CSRF origin checks. Set the header on every forwarded
+request. Keep `.env` private: it is gitignored, excluded from the image build
+context, and must never be committed.
 
 ## Start
 
@@ -67,7 +69,7 @@ upload limit. Do not publish port 8000 on the host.
 Signup is disabled. Create the first administrator after the stack is up:
 
 ```sh
-docker compose exec -T web uv run python manage.py createsuperuser
+docker compose exec web uv run python manage.py createsuperuser
 ```
 
 Users, muscle-group corrections and bearer tokens are all managed in the web UI

@@ -38,14 +38,16 @@ confirm sessions and exercises are present.
 
 ## Restore
 
-Restoring replaces the live database. Take a current backup first, then stop
-writes, install the backup, fix its ownership and restart:
+Restoring replaces the live database. Take a current backup first, then stop the
+service so nothing can write to SQLite while the file is replaced. `docker compose cp`
+creates the file as root, so fix ownership in a one-off container running as root;
+the non-root app user cannot do this itself. Then start the service again:
 
 ```sh
-docker compose up -d
+docker compose stop web
 docker compose cp ./backup.sqlite3 web:/app/data/strong.sqlite3
-docker compose exec -T web chown app:app /app/data/strong.sqlite3
-docker compose restart web
+docker compose run --rm --user root web chown app:app /app/data/strong.sqlite3
+docker compose start web
 ```
 
 The startup script applies migrations to the restored database automatically.
@@ -53,7 +55,7 @@ Confirm the restore succeeded:
 
 ```sh
 docker compose exec -T web uv run python manage.py check
-curl -fsS http://127.0.0.1:8000/api/v1/healthz
+docker compose exec -T web python tools/healthcheck.py
 ```
 
 Then log in and verify your sessions, muscle-group corrections and tokens. If
