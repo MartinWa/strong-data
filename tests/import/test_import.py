@@ -1,0 +1,98 @@
+from decimal import Decimal
+
+import pytest
+from django.contrib.auth import get_user_model
+
+from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
+from workouts.services import import_workouts_csv
+
+HEADER = "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE"
+
+
+def csv_text(*rows: str) -> str:
+    return HEADER + "\n" + "\n".join(rows) + "\n"
+
+
+FIRST_EXPORT = csv_text(
+    "2026-01-05 09:00:00,Push Day #1,54m,Bench Press (Barbell),2,80,5,0,0,8.0",
+    "2026-01-05 08:30:00,Push Day #1,54m,Bench Press (Barbell),1,80,5,0,0,7.5",
+    "2026-01-05 08:35:00,Push Day #1,54m,Chest Fly,1,,,0,0,",
+)
+
+SECOND_EXPORT = csv_text(
+    "2026-02-01 07:00:00,Pull Day,1h,Seated Row (Cable),1,60,10,0,0,9.0",
+)
+
+
+@pytest.mark.django_db
+def test_import_stores_owner_scoped_rows_and_derived_fields():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+
+    result = import_workouts_csv(user, FIRST_EXPORT)
+
+    assert (result.sessions, result.sets, result.exercises) == (1, 3, 2)
+    session = WorkoutSession.objects.get(owner=user)
+    assert session.program == "Push Day"
+    assert session.workout_name == "Push Day #1"
+    assert session.set_count == 3
+    assert session.total_volume_kg == Decimal("800.00")
+
+    sets = list(WorkoutSet.objects.filter(owner=user).order_by("set_time"))
+    assert len(sets) == 3
+
+    weighted = sets[0]
+    assert weighted.exercise.name == "Bench Press (Barbell)"
+    assert weighted.weight_kg == Decimal("80.00")
+    assert weighted.volume_kg == Decimal("400.00")
+    assert weighted.rpe == Decimal("7.5")
+
+    bodyweight = sets[1]
+    assert bodyweight.exercise.name == "Chest Fly"
+    assert bodyweight.weight_kg is None
+    assert bodyweight.volume_kg == Decimal("0.00")
+    assert bodyweight.est_1rm_kg is None
+
+
+@pytest.mark.django_db
+def test_reimport_is_idempotent_and_preserves_meta_corrections():
+    user = get_user_model().objects.create_user(username="bob", password="x")
+
+    import_workouts_csv(user, FIRST_EXPORT)
+    ExerciseMeta.objects.filter(owner=user, exercise_name="Chest Fly").update(
+        muscle_group="Corrected"
+    )
+    first_ids = set(WorkoutSession.objects.filter(owner=user).values_list("id", flat=True))
+
+    result = import_workouts_csv(user, FIRST_EXPORT)
+
+    assert (result.sessions, result.sets, result.exercises) == (1, 3, 2)
+    assert WorkoutSession.objects.filter(owner=user).count() == 1
+    assert WorkoutSet.objects.filter(owner=user).count() == 3
+    assert set(WorkoutSession.objects.filter(owner=user).values_list("id", flat=True)) != first_ids
+    assert (
+        ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly").muscle_group == "Corrected"
+    )
+
+    import_workouts_csv(user, SECOND_EXPORT)
+    assert (
+        ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly").muscle_group == "Corrected"
+    )
+    assert WorkoutSession.objects.filter(owner=user).count() == 1
+    assert WorkoutSet.objects.filter(owner=user).count() == 1
+
+
+@pytest.mark.django_db
+def test_import_does_not_touch_other_owners():
+    alice = get_user_model().objects.create_user(username="alice", password="x")
+    bob = get_user_model().objects.create_user(username="bob", password="x")
+
+    import_workouts_csv(alice, FIRST_EXPORT)
+    import_workouts_csv(bob, SECOND_EXPORT)
+    import_workouts_csv(alice, SECOND_EXPORT)
+
+    assert WorkoutSession.objects.filter(owner=alice).count() == 1
+    assert WorkoutSession.objects.filter(owner=bob).count() == 1
+    assert WorkoutSet.objects.filter(owner=alice).count() == 1
+    assert WorkoutSet.objects.filter(owner=bob).count() == 1
+    assert WorkoutSession.objects.get(owner=alice).workout_name == "Pull Day"
+    assert WorkoutSession.objects.get(owner=bob).workout_name == "Pull Day"

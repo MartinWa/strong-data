@@ -1,0 +1,29 @@
+{% extends "base.html" %}
+{% block title %}Tokens — strong-data{% endblock %}
+{% block content %}
+<h1>API tokens</h1>
+{% if secret %}
+<p>Secret: <code>{{ secret }}</code>. Copy it now; it is shown only once.</p>
+{% endif %}
+<ul>
+  {% for token in tokens %}
+  <li>
+    {{ token.name }} ({{ token.prefix }}…)
+    {% if token.revoked_at %}
+    — revoked
+    {% else %}
+    <form method="post" action="{% url 'revoke_token' token.pk %}">
+      {% csrf_token %}
+      <button type="submit">Revoke</button>
+    </form>
+    {% endif %}
+  </li>
+  {% endfor %}
+</ul>
+<h2>Create a token</h2>
+<form method="post">
+  {% csrf_token %}
+  {{ form.as_p }}
+  <button type="submit">Create</button>
+</form>
+{% endblock %}

@@ -1,0 +1,14 @@
+from django.urls import path
+from django.views.generic import RedirectView
+
+from . import views
+
+urlpatterns = [
+    path("", RedirectView.as_view(pattern_name="history", permanent=False)),
+    path("upload/", views.upload, name="upload"),
+    path("preview/", views.preview, name="preview"),
+    path("history/", views.history, name="history"),
+    path("corrections/", views.corrections, name="corrections"),
+    path("tokens/", views.tokens, name="tokens"),
+    path("tokens/<int:pk>/revoke/", views.revoke_token, name="revoke_token"),
+]

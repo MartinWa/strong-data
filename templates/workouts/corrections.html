@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block title %}Muscle groups — strong-data{% endblock %}
+{% block content %}
+<h1>Muscle groups</h1>
+<p>Corrections survive re-imports.</p>
+{% if not metas %}
+<p>No exercises imported yet.</p>
+{% endif %}
+{% for meta in metas %}
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="exercise_name" value="{{ meta.exercise_name }}">
+  <label for="muscle-{{ forloop.counter }}">{{ meta.exercise_name }}</label>
+  <select id="muscle-{{ forloop.counter }}" name="muscle_group">
+    {% for value, label in form.fields.muscle_group.choices %}
+    <option value="{{ value }}" {% if value == meta.muscle_group %}selected{% endif %}>{{ label }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Save</button>
+</form>
+{% endfor %}
+{% endblock %}
