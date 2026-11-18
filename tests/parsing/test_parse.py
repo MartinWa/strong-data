@@ -1,3 +1,4 @@
+import csv
 from datetime import date, datetime
 from decimal import Decimal
 
@@ -163,3 +164,60 @@ def test_out_of_range_numbers_are_skipped_or_nulled():
     assert kept[0].distance is None
     assert kept[1].seconds is None
     assert kept[2].volume_kg == Decimal("400")
+
+
+def test_incomplete_rows_are_skipped():
+    result = parse_workouts(HEADER + "\n2026-01-05\n2026-01-06,,,,,,,,,\n")
+
+    assert result.sessions == ()
+    assert len(result.warnings) == 2
+    assert all("row skipped" in warning for warning in result.warnings)
+
+
+def test_values_exceeding_field_bounds_are_not_stored():
+    text = csv_text(
+        "2026-01-05 08:00:00,Push,54m,Bench,1,1000000,5,0,0,8",
+        "2026-01-05 08:01:00,Push,54m,Bench,1,80,5,1000000,1000000,8",
+        "2026-01-05 08:02:00,Push,54m,Bench,1,999999.99,40,0,0,8",
+    )
+    result = parse_workouts(text)
+
+    assert len(result.sessions) == 1
+    assert result.sessions[0].set_count == 3
+    first, second, third = result.sessions[0].sets
+    assert first.weight_kg is None
+    assert first.volume_kg == Decimal(0)
+    assert first.est_1rm_kg is None
+    assert second.distance is None
+    assert second.seconds is None
+    assert third.weight_kg == Decimal("999999.99")
+    assert third.est_1rm_kg is None
+    assert all("stored as null" in warning for warning in result.warnings)
+
+
+def test_oversized_names_are_skipped():
+    long_name = "x" * 256
+    result = parse_workouts(
+        csv_text(
+            f"2026-01-05 08:00:00,Push,54m,{long_name},1,80,5,0,0,8",
+            f"2026-01-05 08:01:00,{long_name},54m,Bench,1,80,5,0,0,8",
+        )
+    )
+
+    assert result.sessions == ()
+    assert len(result.warnings) == 2
+
+
+@pytest.fixture
+def small_field_limit():
+    original = csv.field_size_limit()
+    csv.field_size_limit(13)
+    yield
+    csv.field_size_limit(original)
+
+
+def test_csv_reader_errors_become_invalid_csv_error(small_field_limit):
+    text = csv_text("2026-01-05 08:00:00,Push,54m,Very Long Exercise Name,1,80,5,0,0,8")
+
+    with pytest.raises(InvalidCSVError, match="Invalid CSV"):
+        parse_workouts(text)

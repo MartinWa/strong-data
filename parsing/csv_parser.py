@@ -13,6 +13,16 @@ DATE_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
 REQUIRED_HEADERS = frozenset(
     {"Date", "Workout Name", "Exercise Name", "Set Order", "Weight", "Reps"}
 )
+MAX_TEXT_LENGTH = 255
+MAX_INT_VALUE = 2_147_483_647
+FIELD_DIGITS = {
+    "weight": (8, 2),
+    "distance": (8, 2),
+    "seconds": (8, 2),
+    "est_1rm": (8, 2),
+    "volume": (12, 2),
+    "total_volume": (12, 2),
+}
 PROGRAM_SUFFIX = re.compile(r"\s+#\d+$")
 DURATION_PATTERNS = (
     (r"(\d+)\s*h\s*(\d+)\s*m", 60, 1),
@@ -80,6 +90,26 @@ MUSCLE_GUESS = (
 
 class InvalidCSVError(ValueError):
     """Raised when the input is not a Strong CSV export."""
+
+
+def _read_rows(reader: csv.DictReader):
+    try:
+        yield from reader
+    except csv.Error as exc:
+        raise InvalidCSVError(f"Invalid CSV: {exc}") from exc
+
+
+def fits_decimal(value: Decimal | None, field: str) -> bool:
+    max_digits, decimal_places = FIELD_DIGITS[field]
+    if value is None:
+        return True
+    try:
+        quantized = value.quantize(Decimal(1).scaleb(-decimal_places))
+    except InvalidOperation:
+        return False
+    digits = quantized.as_tuple()
+    integer_digits = max(0, len(digits.digits) + digits.exponent)
+    return integer_digits <= max_digits - decimal_places
 
 
 @dataclass(frozen=True)
@@ -202,7 +232,11 @@ def parse_workouts(text: str) -> ParsedWorkouts:
         raise InvalidCSVError("CSV file is empty")
 
     reader = csv.DictReader(io.StringIO(text))
-    missing = REQUIRED_HEADERS - set(reader.fieldnames or ())
+    try:
+        fieldnames = reader.fieldnames
+    except csv.Error as exc:
+        raise InvalidCSVError(f"Invalid CSV: {exc}") from exc
+    missing = REQUIRED_HEADERS - set(fieldnames or ())
     if missing:
         raise InvalidCSVError("Missing required CSV headers: " + ", ".join(sorted(missing)))
 
@@ -210,37 +244,62 @@ def parse_workouts(text: str) -> ParsedWorkouts:
     exercises: set[str] = set()
     warnings: list[str] = []
 
-    for row in reader:
+    for row in _read_rows(reader):
         line = reader.line_num
+        if any(row.get(header) is None for header in REQUIRED_HEADERS):
+            warnings.append(f"Row {line}: incomplete row; row skipped")
+            continue
         set_time = parse_datetime(row.get("Date"))
         if set_time is None:
             warnings.append(f"Row {line}: invalid date; row skipped")
             continue
 
-        workout_name = (row.get("Workout Name") or "").strip() or "Workout"
-        exercise_name = (row.get("Exercise Name") or "").strip() or "Unknown"
+        raw_workout_name = (row.get("Workout Name") or "").strip()
+        raw_exercise_name = (row.get("Exercise Name") or "").strip()
+        if not raw_workout_name and not raw_exercise_name:
+            warnings.append(f"Row {line}: missing workout and exercise; row skipped")
+            continue
+        workout_name = raw_workout_name or "Workout"
+        exercise_name = raw_exercise_name or "Unknown"
+        if max(len(workout_name), len(exercise_name)) > MAX_TEXT_LENGTH:
+            warnings.append(f"Row {line}: name too long; row skipped")
+            continue
         set_order = parse_int(row.get("Set Order"), default=1)
-        if set_order is None or set_order < 1:
+        if set_order is None or not 1 <= set_order <= MAX_INT_VALUE:
             warnings.append(f"Row {line}: invalid set order; row skipped")
             continue
         reps = parse_int(row.get("Reps"), default=0)
-        if reps is None or reps < 0:
+        if reps is None or not 0 <= reps <= MAX_INT_VALUE:
             warnings.append(f"Row {line}: invalid reps; row skipped")
             continue
+        duration_min = parse_duration(row.get("Duration"))
+        if duration_min is not None and duration_min > MAX_INT_VALUE:
+            warnings.append(f"Row {line}: invalid duration; stored as null")
+            duration_min = None
 
-        weight = to_decimal(row.get("Weight"))
+        raw_weight = (row.get("Weight") or "").strip()
+        weight = to_decimal(raw_weight)
         if weight is not None and weight < 0:
             warnings.append(f"Row {line}: negative weight; row skipped")
             continue
-        if weight is None and (row.get("Weight") or "").strip():
+        if weight is not None and not fits_decimal(weight, "weight"):
+            warnings.append(f"Row {line}: weight out of range; stored as null")
+            weight = None
+        elif weight is None and raw_weight:
             warnings.append(f"Row {line}: invalid weight; stored as null")
         distance = to_decimal(row.get("Distance"))
         if distance is not None and distance < 0:
             warnings.append(f"Row {line}: negative distance; stored as null")
             distance = None
+        if distance is not None and not fits_decimal(distance, "distance"):
+            warnings.append(f"Row {line}: distance out of range; stored as null")
+            distance = None
         seconds = to_decimal(row.get("Seconds"))
         if seconds is not None and seconds < 0:
             warnings.append(f"Row {line}: negative seconds; stored as null")
+            seconds = None
+        if seconds is not None and not fits_decimal(seconds, "seconds"):
+            warnings.append(f"Row {line}: seconds out of range; stored as null")
             seconds = None
         raw_rpe = (row.get("RPE") or "").strip()
         rpe = parse_rpe(raw_rpe)
@@ -248,6 +307,14 @@ def parse_workouts(text: str) -> ParsedWorkouts:
             warnings.append(f"Row {line}: invalid RPE; stored as null")
 
         volume = (weight if weight is not None else Decimal(0)) * reps
+        if not fits_decimal(volume, "volume"):
+            warnings.append(f"Row {line}: volume out of range; row skipped")
+            continue
+        est_1rm = estimate_1rm(weight, reps)
+        if est_1rm is not None and not fits_decimal(est_1rm, "est_1rm"):
+            warnings.append(f"Row {line}: estimated 1RM out of range; stored as null")
+            est_1rm = None
+
         set_row = SetRow(
             set_time=set_time,
             exercise_name=exercise_name,
@@ -258,19 +325,25 @@ def parse_workouts(text: str) -> ParsedWorkouts:
             distance=distance,
             seconds=seconds,
             volume_kg=volume,
-            est_1rm_kg=estimate_1rm(weight, reps),
+            est_1rm_kg=est_1rm,
         )
 
         key = (set_time.date().isoformat(), workout_name)
         session = sessions.get(key)
+        running_total = session["total"] if session else Decimal(0)
+        if not fits_decimal(running_total + volume, "total_volume"):
+            warnings.append(f"Row {line}: session volume out of range; row skipped")
+            continue
         if session is None:
             session = {
                 "date": set_time.date(),
                 "workout_name": workout_name,
-                "duration_min": parse_duration(row.get("Duration")),
+                "duration_min": duration_min,
                 "sets": [],
+                "total": Decimal(0),
             }
             sessions[key] = session
+        session["total"] += volume
         session["sets"].append(set_row)
         exercises.add(exercise_name)
 

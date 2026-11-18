@@ -110,3 +110,18 @@ def test_empty_import_does_not_erase_existing_workouts():
 
     assert WorkoutSession.objects.filter(owner=user).count() == 1
     assert WorkoutSet.objects.filter(owner=user).count() == 3
+
+
+@pytest.mark.django_db
+def test_out_of_range_weight_can_be_read_back():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+
+    import_workouts_csv(
+        user,
+        csv_text("2026-01-05 08:00:00,Push,54m,Bench,1,1000000,5,0,0,8"),
+    )
+
+    workout_set = WorkoutSet.objects.get(owner=user)
+    assert workout_set.weight_kg is None
+    assert workout_set.volume_kg == Decimal("0.00")
+    assert workout_set.est_1rm_kg is None

@@ -87,7 +87,7 @@ def preview(request):
 
 @login_required
 def history(request):
-    sessions = WorkoutSession.objects.filter(owner=request.user).prefetch_related("sets")
+    sessions = WorkoutSession.objects.filter(owner=request.user).prefetch_related("sets__exercise")
     return render(request, "workouts/history.html", {"sessions": sessions})
 
 
