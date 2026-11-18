@@ -25,8 +25,17 @@ RUN uv sync --frozen --no-install-project
 
 COPY . .
 
-RUN chown -R app:app /app
+RUN chmod +x tools/docker_start.sh \
+    && mkdir -p /app/data /app/staticfiles \
+    && chown -R app:app /app
 
 USER app
 
-CMD ["uv", "run", "pytest", "-q"]
+RUN uv run python manage.py collectstatic --noinput
+
+EXPOSE 8000
+
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/healthz', timeout=5)"
+
+CMD ["/app/tools/docker_start.sh"]

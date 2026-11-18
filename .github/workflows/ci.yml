@@ -70,3 +70,23 @@ jobs:
           docker run --rm strong-data:ci uv lock --check
       - name: Verify the image runs as non-root
         run: test "$(docker run --rm strong-data:ci id -u)" != "0"
+      - name: Validate compose files
+        run: |
+          docker compose -f compose.yaml config -q
+          docker compose -f compose.yaml -f compose.development.yaml config -q
+      - name: Verify the image serves the app
+        run: |
+          docker run -d --name strong-data-smoke -p 127.0.0.1:8000:8000 \
+            -e STRONG_SECRET_KEY=ci-test-only \
+            -e STRONG_ALLOWED_HOSTS=localhost,127.0.0.1 \
+            -e STRONG_DB_PATH=/app/data/strong.sqlite3 \
+            strong-data:ci
+          for _ in $(seq 1 30); do
+            curl -fsS http://127.0.0.1:8000/api/v1/healthz && break
+            sleep 1
+          done
+          curl -fsS http://127.0.0.1:8000/api/v1/healthz
+          docker logs strong-data-smoke
+      - name: Clean up smoke container
+        if: always()
+        run: docker rm -f strong-data-smoke || true

@@ -8,6 +8,7 @@ from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 
+from strong_data.version import app_version
 from workouts.models import ApiToken, ExerciseMeta, WorkoutSession
 from workouts.services import import_workouts_csv
 
@@ -31,6 +32,16 @@ def small_field_limit():
     csv.field_size_limit(13)
     yield
     csv.field_size_limit(original)
+
+
+@pytest.mark.django_db
+def test_footer_shows_version_and_api_links(client):
+    response = client.get(reverse("login"))
+
+    assert response.status_code == 200
+    assert app_version().encode() in response.content
+    assert b"/api/v1/openapi.json" in response.content
+    assert b"/api/v1/healthz" in response.content
 
 
 @pytest.mark.django_db

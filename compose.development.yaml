@@ -1,0 +1,14 @@
+services:
+  web:
+    environment:
+      STRONG_DEBUG: "true"
+      STRONG_SECRET_KEY: development-only-not-for-production
+      STRONG_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
+      STRONG_DB_PATH: /app/data/strong.sqlite3
+    command: >
+      sh -c "uv run python manage.py migrate --noinput &&
+             uv run python manage.py runserver 0.0.0.0:8000"
+    ports:
+      - "127.0.0.1:8000:8000"
+    healthcheck:
+      disable: true
