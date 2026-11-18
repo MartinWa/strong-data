@@ -36,6 +36,8 @@
 {% endfor %}
 <form method="post">
   {% csrf_token %}
+  <input type="hidden" name="import_id" value="{{ import_id }}">
+  <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
   <button type="submit">Confirm import</button>
 </form>
 {% endblock %}

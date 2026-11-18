@@ -220,19 +220,28 @@ def parse_workouts(text: str) -> ParsedWorkouts:
         workout_name = (row.get("Workout Name") or "").strip() or "Workout"
         exercise_name = (row.get("Exercise Name") or "").strip() or "Unknown"
         set_order = parse_int(row.get("Set Order"), default=1)
-        if set_order is None:
+        if set_order is None or set_order < 1:
             warnings.append(f"Row {line}: invalid set order; row skipped")
             continue
         reps = parse_int(row.get("Reps"), default=0)
-        if reps is None:
+        if reps is None or reps < 0:
             warnings.append(f"Row {line}: invalid reps; row skipped")
             continue
 
         weight = to_decimal(row.get("Weight"))
+        if weight is not None and weight < 0:
+            warnings.append(f"Row {line}: negative weight; row skipped")
+            continue
         if weight is None and (row.get("Weight") or "").strip():
             warnings.append(f"Row {line}: invalid weight; stored as null")
         distance = to_decimal(row.get("Distance"))
+        if distance is not None and distance < 0:
+            warnings.append(f"Row {line}: negative distance; stored as null")
+            distance = None
         seconds = to_decimal(row.get("Seconds"))
+        if seconds is not None and seconds < 0:
+            warnings.append(f"Row {line}: negative seconds; stored as null")
+            seconds = None
         raw_rpe = (row.get("RPE") or "").strip()
         rpe = parse_rpe(raw_rpe)
         if raw_rpe and rpe is None:

@@ -141,3 +141,25 @@ def test_rejects_non_exports_and_strips_byte_order_mark():
 
     text = "\ufeff" + csv_text("2026-01-05 08:00:00,Push,54m,Bench,1,80,5,0,0,8")
     assert len(parse_workouts(text).sessions) == 1
+
+
+def test_out_of_range_numbers_are_skipped_or_nulled():
+    text = csv_text(
+        "2026-01-05 08:00:00,Push,54m,Bench,0,80,5,0,0,8",
+        "2026-01-05 08:01:00,Push,54m,Bench,1,80,-1,0,0,8",
+        "2026-01-05 08:02:00,Push,54m,Bench,1,-80,5,0,0,8",
+        "2026-01-05 08:03:00,Push,54m,Bench,1,80,5,-1,0,8",
+        "2026-01-05 08:04:00,Push,54m,Bench,1,80,5,0,-1,8",
+        "2026-01-05 08:05:00,Push,54m,Bench,1,80,5,0,0,8",
+    )
+    result = parse_workouts(text)
+
+    assert len(result.sessions) == 1
+    assert result.sessions[0].set_count == 3
+    assert len(result.warnings) == 5
+    assert all("row skipped" in warning for warning in result.warnings[:3])
+
+    kept = result.sessions[0].sets
+    assert kept[0].distance is None
+    assert kept[1].seconds is None
+    assert kept[2].volume_kg == Decimal("400")

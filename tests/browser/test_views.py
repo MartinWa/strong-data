@@ -44,7 +44,13 @@ def test_upload_preview_confirm_flow(client):
     assert b"Push Day" in response.content
     assert b"Missing" not in response.content
 
-    response = client.post(reverse("preview"))
+    response = client.post(
+        reverse("preview"),
+        {
+            "import_id": response.context["import_id"],
+            "fingerprint": response.context["fingerprint"],
+        },
+    )
     assert response.status_code == 302
     assert response.url == reverse("history")
     assert WorkoutSession.objects.filter(owner=user).count() == 1
@@ -106,3 +112,69 @@ def test_token_creation_and_revocation_are_owner_scoped(client):
     client.post(reverse("revoke_token", args=[token.pk]))
     token.refresh_from_db()
     assert token.revoked_at is not None
+
+
+@pytest.mark.django_db
+def test_history_renders_imported_sets(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.get(reverse("history"))
+
+    assert response.status_code == 200
+    assert b"Chest Fly" in response.content
+    assert b"Bench Press (Barbell)" in response.content
+
+
+@pytest.mark.django_db
+def test_stale_preview_cannot_import_a_different_file(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    upload(client)
+    preview = client.get(reverse("preview"))
+    stale_id = preview.context["import_id"]
+    stale_fingerprint = preview.context["fingerprint"]
+
+    other_csv = CSV.replace("Push Day #1", "Pull Day").replace(
+        "Bench Press (Barbell)", "Seated Row (Cable)"
+    )
+    upload(client, other_csv)
+    response = client.post(
+        reverse("preview"),
+        {"import_id": stale_id, "fingerprint": stale_fingerprint},
+    )
+
+    assert response.status_code == 302
+    assert response.url == reverse("upload")
+    assert WorkoutSession.objects.filter(owner=user).count() == 0
+
+
+@pytest.mark.django_db
+def test_duplicate_token_name_returns_form_error(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    client.post(reverse("tokens"), {"name": "reader"})
+    response = client.post(reverse("tokens"), {"name": "reader"})
+
+    assert response.status_code == 200
+    assert b"already exists" in response.content
+    assert ApiToken.objects.filter(owner=user).count() == 1
+
+    token = ApiToken.objects.get(owner=user)
+    client.post(reverse("revoke_token", args=[token.pk]))
+    response = client.post(reverse("tokens"), {"name": "reader"})
+    assert response.status_code == 200
+    assert b"already exists" in response.content
+
+
+@pytest.mark.django_db
+def test_login_without_next_redirects_to_history(client):
+    get_user_model().objects.create_user(username="alice", password="secret")
+
+    response = client.post(reverse("login"), {"username": "alice", "password": "secret"})
+
+    assert response.status_code == 302
+    assert response.url == reverse("history")

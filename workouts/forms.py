@@ -2,6 +2,8 @@ from django import forms
 
 from parsing.csv_parser import MUSCLE_GUESS
 
+from .models import ApiToken
+
 MUSCLE_CHOICES = sorted({muscle for _, muscle in MUSCLE_GUESS} | {"Other"})
 
 
@@ -16,3 +18,13 @@ class MuscleGroupForm(forms.Form):
 
 class TokenForm(forms.Form):
     name = forms.CharField(max_length=255)
+
+    def __init__(self, *args, owner=None, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.owner = owner
+
+    def clean_name(self):
+        name = self.cleaned_data["name"]
+        if self.owner is not None and ApiToken.objects.filter(owner=self.owner, name=name).exists():
+            raise forms.ValidationError("A token with this name already exists.")
+        return name

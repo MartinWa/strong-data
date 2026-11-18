@@ -36,10 +36,7 @@ def test_opt_in_parity_with_reference_loader():
     assert list(parsed.exercises) == list(old_exercises)
     assert sum(session.set_count for session in parsed.sessions) == len(old_sets)
 
-    old_by_key = {
-        (date.isoformat(), workout_name): data
-        for (date, workout_name), data in old_sessions.items()
-    }
+    old_by_key = dict(old_sessions)
     new_by_key = {
         (session.session_date.isoformat(), session.workout_name): session
         for session in parsed.sessions

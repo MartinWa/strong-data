@@ -9,6 +9,10 @@ from parsing import ParsedWorkouts, classify_muscle, parse_workouts
 from .models import Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 
 
+class EmptyImportError(ValueError):
+    """Raised when an export contains no importable sets."""
+
+
 @dataclass(frozen=True)
 class ImportResult:
     sessions: int
@@ -17,6 +21,9 @@ class ImportResult:
 
 
 def import_workouts(user, parsed: ParsedWorkouts) -> ImportResult:
+    if not parsed.sessions:
+        raise EmptyImportError("CSV export contains no importable sets")
+
     with transaction.atomic():
         WorkoutSet.objects.filter(owner=user).delete()
         WorkoutSession.objects.filter(owner=user).delete()

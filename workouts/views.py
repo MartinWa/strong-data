@@ -1,8 +1,10 @@
 import hashlib
+import hmac
 import secrets
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.db import IntegrityError, transaction
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -11,7 +13,7 @@ from parsing import InvalidCSVError, parse_workouts
 
 from .forms import MuscleGroupForm, TokenForm, UploadForm
 from .models import ApiToken, ExerciseMeta, WorkoutSession
-from .services import import_workouts_csv
+from .services import EmptyImportError, import_workouts_csv
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 PENDING_IMPORT_KEY = "pending_import_csv"
@@ -28,12 +30,19 @@ def upload(request):
             else:
                 try:
                     raw = upload_file.read().decode("utf-8-sig")
-                    parse_workouts(raw)
+                    parsed = parse_workouts(raw)
                 except (UnicodeDecodeError, InvalidCSVError) as exc:
                     form.add_error("csv_file", str(exc))
                 else:
-                    request.session[PENDING_IMPORT_KEY] = raw
-                    return redirect("preview")
+                    if not parsed.sessions:
+                        form.add_error("csv_file", "CSV export contains no importable rows")
+                    else:
+                        request.session[PENDING_IMPORT_KEY] = {
+                            "id": secrets.token_urlsafe(16),
+                            "fingerprint": hashlib.sha256(raw.encode()).hexdigest(),
+                            "csv": raw,
+                        }
+                        return redirect("preview")
     else:
         form = UploadForm()
     return render(request, "workouts/upload.html", {"form": form})
@@ -41,19 +50,39 @@ def upload(request):
 
 @login_required
 def preview(request):
-    raw = request.session.get(PENDING_IMPORT_KEY)
-    if not raw:
+    pending = request.session.get(PENDING_IMPORT_KEY)
+    if not pending:
         return redirect("upload")
-    parsed = parse_workouts(raw)
+    parsed = parse_workouts(pending["csv"])
     if request.method == "POST":
-        result = import_workouts_csv(request.user, raw)
+        posted_id = request.POST.get("import_id", "")
+        posted_fingerprint = request.POST.get("fingerprint", "")
+        if not hmac.compare_digest(
+            posted_id.encode(), pending["id"].encode()
+        ) or not hmac.compare_digest(posted_fingerprint.encode(), pending["fingerprint"].encode()):
+            messages.error(request, "This preview is stale. Upload the CSV again.")
+            return redirect("upload")
+        try:
+            result = import_workouts_csv(request.user, pending["csv"])
+        except EmptyImportError as exc:
+            messages.error(request, str(exc))
+            request.session.pop(PENDING_IMPORT_KEY, None)
+            return redirect("upload")
         request.session.pop(PENDING_IMPORT_KEY, None)
         messages.success(
             request,
             f"Imported {result.sessions} sessions and {result.sets} sets.",
         )
         return redirect("history")
-    return render(request, "workouts/preview.html", {"parsed": parsed})
+    return render(
+        request,
+        "workouts/preview.html",
+        {
+            "parsed": parsed,
+            "import_id": pending["id"],
+            "fingerprint": pending["fingerprint"],
+        },
+    )
 
 
 @login_required
@@ -88,18 +117,24 @@ def tokens(request):
     user_tokens = ApiToken.objects.filter(owner=request.user)
     secret = None
     if request.method == "POST":
-        form = TokenForm(request.POST)
+        form = TokenForm(request.POST, owner=request.user)
         if form.is_valid():
-            secret = secrets.token_urlsafe(32)
-            ApiToken.objects.create(
-                owner=request.user,
-                name=form.cleaned_data["name"],
-                key_hash=hashlib.sha256(secret.encode()).hexdigest(),
-                prefix=secret[:8],
-            )
-            messages.success(request, "Token created. Copy the secret now; it is shown once.")
+            try:
+                with transaction.atomic():
+                    secret = secrets.token_urlsafe(32)
+                    ApiToken.objects.create(
+                        owner=request.user,
+                        name=form.cleaned_data["name"],
+                        key_hash=hashlib.sha256(secret.encode()).hexdigest(),
+                        prefix=secret[:8],
+                    )
+            except IntegrityError:
+                secret = None
+                form.add_error("name", "A token with this name already exists.")
+            else:
+                messages.success(request, "Token created. Copy the secret now; it is shown once.")
     else:
-        form = TokenForm()
+        form = TokenForm(owner=request.user)
     return render(
         request,
         "workouts/tokens.html",

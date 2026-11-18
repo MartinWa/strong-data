@@ -10,7 +10,7 @@
   <h2>{{ session.session_date }} — {{ session.workout_name }}</h2>
   <p>Program {{ session.program }}; {{ session.set_count }} sets; {{ session.total_volume_kg }} kg.</p>
   <ul>
-    {% for item in session.sets %}
+    {% for item in session.sets.all %}
     <li>{{ item.exercise.name }} — {{ item.weight_kg|default_if_none:"—" }} kg × {{ item.reps }}</li>
     {% endfor %}
   </ul>

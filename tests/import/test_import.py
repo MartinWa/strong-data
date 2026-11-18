@@ -4,7 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
-from workouts.services import import_workouts_csv
+from workouts.services import EmptyImportError, import_workouts_csv
 
 HEADER = "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE"
 
@@ -96,3 +96,17 @@ def test_import_does_not_touch_other_owners():
     assert WorkoutSet.objects.filter(owner=bob).count() == 1
     assert WorkoutSession.objects.get(owner=alice).workout_name == "Pull Day"
     assert WorkoutSession.objects.get(owner=bob).workout_name == "Pull Day"
+
+
+@pytest.mark.django_db
+def test_empty_import_does_not_erase_existing_workouts():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, FIRST_EXPORT)
+
+    with pytest.raises(EmptyImportError):
+        import_workouts_csv(user, HEADER + "\n")
+    with pytest.raises(EmptyImportError):
+        import_workouts_csv(user, csv_text("not-a-date,Push Day,54m,Bench,1,80,5,0,0,8"))
+
+    assert WorkoutSession.objects.filter(owner=user).count() == 1
+    assert WorkoutSet.objects.filter(owner=user).count() == 3
