@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Preview — strong-data{% endblock %}
+{% block content %}
+<h1>Preview import</h1>
+<p>{{ parsed.sessions|length }} sessions, {{ parsed.exercises|length }} exercises.</p>
+{% if parsed.warnings %}
+<h2>Warnings</h2>
+<ul>
+  {% for warning in parsed.warnings %}<li>{{ warning }}</li>{% endfor %}
+</ul>
+{% endif %}
+{% for session in parsed.sessions %}
+<section>
+  <h2>{{ session.session_date }} — {{ session.workout_name }}</h2>
+  <p>Program {{ session.program }}; {{ session.set_count }} sets; {{ session.total_volume_kg }} kg.</p>
+  <table>
+    <thead>
+      <tr><th>Time</th><th>Exercise</th><th>Order</th><th>Weight</th><th>Reps</th><th>RPE</th><th>Volume</th><th>1RM</th></tr>
+    </thead>
+    <tbody>
+      {% for item in session.sets %}
+      <tr>
+        <td>{{ item.set_time }}</td>
+        <td>{{ item.exercise_name }}</td>
+        <td>{{ item.set_order }}</td>
+        <td>{{ item.weight_kg|default_if_none:"—" }}</td>
+        <td>{{ item.reps }}</td>
+        <td>{{ item.rpe|default_if_none:"—" }}</td>
+        <td>{{ item.volume_kg }}</td>
+        <td>{{ item.est_1rm_kg|default_if_none:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endfor %}
+<form method="post">
+  {% csrf_token %}
+  <input type="hidden" name="import_id" value="{{ import_id }}">
+  <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+  <button type="submit">Confirm import</button>
+</form>
+{% endblock %}

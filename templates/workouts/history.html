@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}History — strong-data{% endblock %}
+{% block content %}
+<h1>Import history</h1>
+{% if not sessions %}
+<p>No sessions imported yet.</p>
+{% endif %}
+{% for session in sessions %}
+<section>
+  <h2>{{ session.session_date }} — {{ session.workout_name }}</h2>
+  <p>Program {{ session.program }}; {{ session.set_count }} sets; {{ session.total_volume_kg }} kg.</p>
+  <ul>
+    {% for item in session.sets.all %}
+    <li>{{ item.exercise.name }} — {{ item.weight_kg|default_if_none:"—" }} kg × {{ item.reps }}</li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
+{% endblock %}
