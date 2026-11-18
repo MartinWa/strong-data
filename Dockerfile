@@ -42,6 +42,7 @@ RUN python -m venv --system-site-packages /state/venv \
 ENV PATH=/state/venv/bin:$PATH \
     STRONG_DEBUG=true \
     STRONG_DB_PATH=/state/development/strong.sqlite3 \
+    STRONG_STATIC_ROOT=/state/staticfiles \
     TMPDIR=/state/tmp \
     RUFF_CACHE_DIR=/state/ruff-cache \
     PYTEST_ADDOPTS="-o cache_dir=/state/pytest-cache" \
