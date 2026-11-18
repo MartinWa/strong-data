@@ -22,7 +22,8 @@ The same checks run in CI on a Linux runner. Docker-based commands are in
 
 ## Rules
 
-- Work in the phase order defined in `planning/PLAN.md`.
+- Work in the phase order described under `Roadmap and status` in `README.md`; discuss
+  larger changes in an issue first.
 - Use Django migrations for all schema changes.
 - Keep all fixtures and examples synthetic; never commit personal data, CSV files,
   databases, backups, secrets or `.env` files.

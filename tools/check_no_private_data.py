@@ -32,7 +32,7 @@ def is_violation(path: str) -> bool:
     name = candidate.name.lower()
     if name.startswith(".env") and name != ".env.example":
         return True
-    if ".db-" in name or ".sqlite-" in name:
+    if ".db-" in name or ".sqlite-" in name or ".sqlite3-" in name:
         return True
     return name.endswith(BAD_SUFFIXES)
 

@@ -8,6 +8,7 @@ reference/
 *.db-*
 *.sqlite
 *.sqlite3
+*.sqlite3-*
 *.sqlite-*
 *.dump
 *.bak
