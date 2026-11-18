@@ -3,13 +3,14 @@ from ninja import Router
 from workouts.models import Exercise, ExerciseMeta, WorkoutSession
 
 from ..contract import envelope
+from ..params import NoQuery, StrictQuery
 from ..schemas import ValuesOut
 
 router = Router()
 
 
 @router.get("/programs", response=ValuesOut, tags=["reference"], summary="Distinct programs")
-def programs(request):
+def programs(request, query: NoQuery = StrictQuery(None)):
     values = sorted(
         {
             value
@@ -22,7 +23,7 @@ def programs(request):
 
 
 @router.get("/exercises", response=ValuesOut, tags=["reference"], summary="Distinct exercises")
-def exercises(request):
+def exercises(request, query: NoQuery = StrictQuery(None)):
     values = list(
         Exercise.objects.filter(owner=request.auth).values_list("name", flat=True).order_by("name")
     )
@@ -32,7 +33,7 @@ def exercises(request):
 @router.get(
     "/muscle-groups", response=ValuesOut, tags=["reference"], summary="Distinct muscle groups"
 )
-def muscle_groups(request):
+def muscle_groups(request, query: NoQuery = StrictQuery(None)):
     values = sorted(
         {
             value

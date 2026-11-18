@@ -2,6 +2,16 @@ from .auth import resolve_bearer
 from .contract import API_PREFIX, MAX_BODY_BYTES, ApiError, error_response
 
 
+def _django_error_response(response):
+    if response.get("Content-Type", "").startswith("application/json"):
+        return None
+    if response.status_code == 404:
+        return error_response(404, "not_found", "Resource not found")
+    if response.status_code == 405:
+        return error_response(405, "method_not_allowed", "Method not allowed")
+    return None
+
+
 class ApiResponseMiddleware:
     def __init__(self, get_response):
         self.get_response = get_response
@@ -30,8 +40,9 @@ class ApiResponseMiddleware:
             )
         else:
             response = self.get_response(request)
-            if response.status_code == 405:
-                response = error_response(405, "method_not_allowed", "Method not allowed")
+            converted = _django_error_response(response)
+            if converted is not None:
+                response = converted
 
         response["Cache-Control"] = "no-store"
         return response

@@ -9,7 +9,7 @@ router = Router()
 
 
 @router.get(
-    "/exercises/{name}/progress",
+    "/exercises/{path:name}/progress",
     response=ProgressOut,
     tags=["exercise"],
     summary="Daily exercise progress",
@@ -25,7 +25,7 @@ def exercise_progress(
 
 
 @router.get(
-    "/exercises/{name}/records",
+    "/exercises/{path:name}/records",
     response=ExerciseRecordOut,
     tags=["exercise"],
     summary="Exercise records by reps",

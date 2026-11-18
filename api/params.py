@@ -89,6 +89,19 @@ class StrictQuery(QueryField):
         return "query"
 
 
+class NoQuery(StrictQueryModel):
+    pass
+
+
+MIN_YEAR = 2
+MAX_YEAR = 9999
+
+
+def validate_year(year):
+    if year < MIN_YEAR or year > MAX_YEAR:
+        raise ApiError(422, "validation_error", f"year must be between {MIN_YEAR} and {MAX_YEAR}")
+
+
 def validate_date_range(start, end):
     if start is None or end is None:
         return

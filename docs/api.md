@@ -21,7 +21,8 @@ django-ninja. A generated OpenAPI schema is available at `GET /api/v1/openapi.js
   taken). Additive fields keep this version; a breaking shape change requires a
   new version. Every response sets `Cache-Control: no-store`.
 - **Errors.** `{"error": {"code": ..., "message": ..., "details": ...}}` alongside
-  the envelope fields. `details` is `null` when not applicable. Stable codes:
+  the envelope fields. `details` is `null` when not applicable. Unmatched API URLs
+  also return this envelope (`404 not_found`) instead of an HTML error page. Stable codes:
   `bad_request` (400), `invalid_credentials` (401), `permission_denied` (403),
   `not_found` (404), `method_not_allowed` (405), `conflict` (409),
   `payload_too_large` (413), `unsupported_media_type` (415),
@@ -32,7 +33,9 @@ django-ninja. A generated OpenAPI schema is available at `GET /api/v1/openapi.js
   (so `limit=50.5` and `limit=true` are `422`). Boolean fields accept only the
   literal strings `true` and `false` (so `weighted=1` is `422`). Date fields must
   be valid `YYYY-MM-DD` values. Unknown query parameters, repeated query
-  parameters, invalid enum values and unparseable values are `422`. No value is
+  parameters, invalid enum values and unparseable values are `422`. This includes
+  routes that declare no filters: passing any query parameter to a reference,
+  identity, yearly-totals, records or session-detail route is `422`. No value is
   silently coerced to zero or clamped.
 - **Guardrails.** `start <= end` is required and a span of more than 1830 days
   (about five years) is `422`. `limit` must be between 1 and 200; `limit > 200`
@@ -43,6 +46,9 @@ django-ninja. A generated OpenAPI schema is available at `GET /api/v1/openapi.js
   other query parameters) and `has_more`. The default `limit` is 50. `sort`
   accepts a documented key, optionally prefixed with `-` for descending order,
   and always appends `id` ascending as a unique tiebreaker.
+- **OpenAPI.** `GET /openapi.json` documents the error envelope as the `ErrorOut`
+  component and attaches the documented error responses (including `401`, `404`
+  and `422`) to every operation, except `401` on the anonymous `/healthz`.
 
 ## Envelope shapes
 
@@ -139,7 +145,8 @@ the series (missing buckets are 0). `value_4wma` is `null` unless
 
 - Buckets start on the day, the Monday of the ISO week, the 1st of the month or
   the 1st of the year. Every bucket between the effective start and end is
-  present (zero-filled).
+  present (zero-filled). When both `start` and `end` are supplied, the whole
+  interval is zero-filled even if no sessions match it.
 - `sessions` counts sessions; `volume` sums set `volume_kg`;
   `training-time` sums session `duration_min / 60`;
   `volume-per-session` is bucket volume / bucket session count (0 if none).
@@ -179,6 +186,9 @@ All numbers are rounded to two decimals.
 
 ## Exercise endpoints
 
+Exercise names may contain `/`; percent-encode it in the path and the route
+still resolves the full name.
+
 `GET /exercises/{name}/progress` (filters `start`, `end`): envelope, `count`,
 `items` of `{date, best_est_1rm_kg, top_weight_kg, max_reps, volume_kg}` grouped
 by `session_date` and sorted by date ascending. `best_est_1rm_kg` and
@@ -212,7 +222,7 @@ recent `set_time`. `seconds` and `distance` are `null` when absent.
 `{year, sessions, sets, volume_kg, volume_t, hours}`, one row per year with data,
 sorted by year ascending. Numbers rounded to two decimals.
 
-`GET /yearly/pace` (parameters `year` default current year, `as_of` default
+`GET /yearly/pace` (parameters `year` default `as_of`'s year, `as_of` default
 today): envelope plus:
 
 | Field | Meaning |
@@ -224,8 +234,15 @@ today): envelope plus:
 | `needed_per_week` | `max(last_year_full - ytd, 0) / remaining_weeks` for each field; 0 when no weeks remain |
 | `pace` | Rows `{year, sessions, volume_kg, cumulative_sessions, cumulative_volume_kg}` for all years through `year` |
 
-`elapsed_days` includes `as_of`; `days_in_year` is 365 or 366; `remaining_weeks =
-(days_in_year - elapsed_days) / 7`. All numbers are rounded to two decimals.
+`year` must be between 2 and 9999 so that both the compared year and its
+predecessor are valid; other values are `422`. The `as_of` month/day is
+interpreted inside the selected year: `ytd`, `last_year_to_date`, `elapsed_days`
+and the projection all use that same cutoff (clamped for leap days), so an
+`as_of` from another year never compares a full year against a partial one.
+`elapsed_days` includes the cutoff; `days_in_year` is 365 or 366;
+`remaining_weeks = (days_in_year - elapsed_days) / 7`. Projections and weekly
+needs are computed from unrounded totals; all numbers in the response are
+rounded to two decimals.
 
 ## Raw
 

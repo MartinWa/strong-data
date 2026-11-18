@@ -1,3 +1,4 @@
+from django.db import transaction
 from django.http import Http404
 from ninja import Router
 
@@ -6,6 +7,7 @@ from workouts.models import WorkoutSession
 from ..contract import envelope
 from ..params import (
     IntParam,
+    NoQuery,
     OptBoolParam,
     OptDateParam,
     StrictQuery,
@@ -103,15 +105,16 @@ def sessions(
 
 
 @router.get("/sessions/{id}", response=SessionDetailOut, tags=["raw"], summary="Session detail")
-def session_detail(request, id: IntParam):
-    session = WorkoutSession.objects.filter(owner=request.auth, pk=id).first()
-    if session is None:
-        raise Http404("Session not found")
-    mapping = muscle_map(request.auth)
-    sets = [
-        public_set(set_record(item, mapping))
-        for item in session.sets.select_related("exercise").order_by("set_time", "set_order")
-    ]
+def session_detail(request, id: IntParam, query: NoQuery = StrictQuery(None)):
+    with transaction.atomic():
+        session = WorkoutSession.objects.filter(owner=request.auth, pk=id).first()
+        if session is None:
+            raise Http404("Session not found")
+        mapping = muscle_map(request.auth)
+        sets = [
+            public_set(set_record(item, mapping))
+            for item in session.sets.select_related("exercise").order_by("set_time", "set_order")
+        ]
     return {**envelope(), **public_session(session_record(session)), "sets": sets}
 
 
@@ -148,7 +151,7 @@ def sets(
 
 
 @router.get(
-    "/exercises/{name}/sets",
+    "/exercises/{path:name}/sets",
     response=SetPage,
     tags=["raw"],
     summary="Paginated set history for one exercise",

@@ -242,11 +242,14 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average):
                 entry["groups"][key]["sessions"].add(item.session_id)
                 all_groups.add(key)
 
-    if not acc:
+    if not acc and (start is None or end is None):
         return {"bucket": bucket, "group_by": group_by, "count": 0, "items": []}
 
-    effective_start = start or min(acc)
-    effective_end = end or max(acc)
+    if acc:
+        effective_start = start or min(acc)
+        effective_end = end or max(acc)
+    else:
+        effective_start, effective_end = start, end
 
     items = []
     values = []
@@ -476,9 +479,13 @@ def _totals(sessions):
     return {
         "sessions": len(sessions),
         "sets": sum(item.set_count for item in sessions),
-        "volume_kg": round2(volume),
-        "hours": round2(duration / 60),
+        "volume_kg": float(volume),
+        "hours": duration / 60,
     }
+
+
+def _round_totals(totals):
+    return {key: round2(value) for key, value in totals.items()}
 
 
 def _scaled(totals, factor):
@@ -494,8 +501,9 @@ def pace_data(user, year, as_of):
     year_start = date(year, 1, 1)
     year_end = date(year, 12, 31)
     previous = year - 1
+    cutoff = _cutoff(year, as_of)
 
-    ytd = _totals(owned_sessions(user, start=year_start, end=min(as_of, year_end)))
+    ytd = _totals(owned_sessions(user, start=year_start, end=cutoff))
     last_ytd = _totals(
         owned_sessions(user, start=date(previous, 1, 1), end=_cutoff(previous, as_of))
     )
@@ -504,7 +512,7 @@ def pace_data(user, year, as_of):
     )
 
     days_in_year = (year_end - year_start).days + 1
-    elapsed = max(1, min((as_of - year_start).days + 1, days_in_year))
+    elapsed = max(1, min((cutoff - year_start).days + 1, days_in_year))
     remaining_weeks = max(0, (days_in_year - elapsed) / 7)
 
     projected = _scaled(ytd, days_in_year / elapsed)
@@ -533,8 +541,8 @@ def pace_data(user, year, as_of):
 
     return {
         "year": year,
-        "ytd": ytd,
-        "last_year_to_date": last_ytd,
+        "ytd": _round_totals(ytd),
+        "last_year_to_date": _round_totals(last_ytd),
         "projected": projected,
         "needed_per_week": needed,
         "pace": pace,

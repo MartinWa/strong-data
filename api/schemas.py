@@ -6,6 +6,16 @@ class Envelope(Schema):
     generated_at: str
 
 
+class ErrorBody(Schema):
+    code: str
+    message: str
+    details: list | None
+
+
+class ErrorOut(Envelope):
+    error: ErrorBody
+
+
 class HealthOut(Envelope):
     status: str
 
