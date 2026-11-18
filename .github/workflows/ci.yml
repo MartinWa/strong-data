@@ -1,41 +1,72 @@
 name: CI
 
 on:
-  push:
-    branches:
-      - main
   pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  UV_VERSION: "0.13.7"
 
 jobs:
   checks:
-    runs-on: ubuntu-latest
+    name: Checks (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-
-      - name: Install uv
-        uses: astral-sh/setup-uv@v6
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          version: "0.13.7"
+          persist-credentials: false
+      - name: Set up uv
+        uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2 # v10.3.3
+        with:
+          version: ${{ env.UV_VERSION }}
           enable-cache: true
-
       - name: Install Python
         run: uv python install
-
       - name: Install dependencies
         run: uv sync --frozen
-
-      - name: Check lockfile
+      - name: Check dependency lockfile
         run: uv lock --check
-
-      - name: Repository hygiene guard
+      - name: Check repository hygiene
         run: uv run python tools/check_no_private_data.py
-
-      - name: Lint
-        run: uv run ruff check .
-
-      - name: Check formatting
-        run: uv run ruff format --check .
-
-      - name: Tests
+      - name: Lint and check formatting
+        run: |
+          uv run ruff check .
+          uv run ruff format --check .
+      - name: Run tests
         run: uv run pytest -q
+
+  container:
+    name: Container (Linux)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Build the non-root image
+        run: docker build -t strong-data:ci .
+      - name: Verify checks inside the container
+        run: |
+          docker run --rm strong-data:ci uv run pytest -q
+          docker run --rm strong-data:ci uv run ruff check .
+          docker run --rm strong-data:ci uv run ruff format --check .
+          docker run --rm strong-data:ci uv run python tools/check_no_private_data.py
+          docker run --rm strong-data:ci uv lock --check
+      - name: Verify the image runs as non-root
+        run: test "$(docker run --rm strong-data:ci id -u)" != "0"
