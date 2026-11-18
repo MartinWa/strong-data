@@ -26,7 +26,20 @@ uv run ruff format --check .
 uv run python tools/check_no_private_data.py
 ```
 
-The same checks run in CI on a Linux runner. Docker-based commands are in `AGENTS.md`.
+The same checks run in CI inside the development container. Docker-based commands are
+in `AGENTS.md`.
+
+## Container development
+
+The standalone development stack builds the `development` image target, serves on
+`127.0.0.1:8000`, requires no `.env`, and bind-mounts your working copy:
+
+```sh
+docker compose -f compose.development.yaml up --build
+```
+
+Database, virtualenv and caches live on named volumes; rebuild after dependency
+changes so the seeded virtualenv is refreshed from the image.
 
 ## Optional parity check
 

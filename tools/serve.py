@@ -1,5 +1,6 @@
 import os
 
+from django.core.management import call_command
 from waitress import serve
 
 from strong_data.wsgi import application
@@ -7,6 +8,7 @@ from strong_data.wsgi import application
 TRUSTED_PROXY = os.environ.get("STRONG_TRUSTED_PROXY", "*")
 PORT = int(os.environ.get("STRONG_PORT", "8000"))
 
+call_command("migrate", interactive=False)
 serve(
     application,
     host="0.0.0.0",

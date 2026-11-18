@@ -1,17 +1,29 @@
+# Windows remains the source/editing host; all runtime state lives on Linux storage.
+name: strong-data-development
 services:
   web:
-    env_file: !reset
-      - path: .env
-        required: false
-    environment:
-      STRONG_DEBUG: "true"
-      STRONG_SECRET_KEY: development-only-not-for-production
-      STRONG_ALLOWED_HOSTS: localhost,127.0.0.1,testserver
-      STRONG_DB_PATH: /app/data/strong.sqlite3
-    command: >
-      sh -c "uv run python manage.py migrate --noinput &&
-             uv run python manage.py runserver 0.0.0.0:8000"
+    build:
+      context: .
+      target: development
+    image: strong-data:development
+    init: true
     ports:
       - "127.0.0.1:8000:8000"
-    healthcheck:
-      disable: true
+    volumes:
+      - type: bind
+        source: .
+        target: /app
+      - development-state:/state
+      - editor-home:/home/developer
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+volumes:
+  development-state:
+  editor-home:

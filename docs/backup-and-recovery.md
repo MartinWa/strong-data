@@ -16,7 +16,7 @@ Use SQLite's online backup API so a consistent copy is taken without stopping th
 app. Create the copy on the data volume, move it to the host, then remove it:
 
 ```sh
-docker compose exec -T web uv run python -c "import sqlite3; s = sqlite3.connect('/app/data/strong.sqlite3'); d = sqlite3.connect('/app/data/backup.sqlite3'); s.backup(d); d.close(); s.close()"
+docker compose exec -T web python -c "import sqlite3; s = sqlite3.connect('/app/data/strong.sqlite3'); d = sqlite3.connect('/app/data/backup.sqlite3'); s.backup(d); d.close(); s.close()"
 docker compose cp web:/app/data/backup.sqlite3 ./backup.sqlite3
 docker compose exec -T web rm -f /app/data/backup.sqlite3
 ```
@@ -59,15 +59,15 @@ the service again:
 ```sh
 docker compose stop web
 docker compose cp ./backup.sqlite3 web:/app/data/strong.sqlite3
-docker compose run --rm --user root web chown app:app /app/data/strong.sqlite3
+docker compose run --rm --user root web chown 1000:1000 /app/data/strong.sqlite3
 docker compose start web
 ```
 
-The startup script applies migrations to the restored database automatically.
+The server applies migrations to the restored database automatically on start.
 Confirm the restore succeeded:
 
 ```sh
-docker compose exec -T web uv run python manage.py check
+docker compose exec -T web python manage.py check
 docker compose exec -T web python tools/healthcheck.py
 ```
 

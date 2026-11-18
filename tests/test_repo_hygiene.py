@@ -53,19 +53,27 @@ def test_ignore_rules_cover_sqlite_sidecars():
             assert "*.sqlite3-*" in patterns
 
 
-def test_production_compose_requires_env_file():
+def test_production_compose_requires_operator_configuration():
     text = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
 
-    assert "path: .env" in text
-    assert "required: true" in text
+    assert 'image: "${STRONG_IMAGE:?Set a tested local or released image tag or digest}"' in text
+    assert 'env_file: "${STRONG_ENV_FILE:-.env}"' in text
+    assert 'name: "${PROXY_NETWORK:?Set the existing private proxy network}"' in text
 
 
-def test_development_compose_makes_env_file_optional():
+def test_production_compose_hardens_the_container():
+    text = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
+
+    for hardening in ("external: true", "read_only: true", "cap_drop", "no-new-privileges:true"):
+        assert hardening in text
+
+
+def test_development_compose_needs_no_env_file():
     text = (REPO_ROOT / "compose.development.yaml").read_text(encoding="utf-8")
 
-    assert "env_file: !reset" in text
-    assert "path: .env" in text
-    assert "required: false" in text
+    assert "env_file" not in text
+    assert "target: development" in text
+    assert "127.0.0.1:8000:8000" in text
 
 
 def test_restore_docs_create_container_before_copying_backup():

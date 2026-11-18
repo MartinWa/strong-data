@@ -27,25 +27,42 @@ uv run ruff format --check .
 uv run python tools/check_no_private_data.py
 ```
 
-Container-based verification (matches CI's Linux environment):
+Container-based verification (matches CI's Linux environment). The development
+stack builds the `development` target and runs every check inside it:
 
 ```sh
-docker build -t strong-data:dev .
-docker run --rm strong-data:dev uv run pytest -q
-docker run --rm strong-data:dev uv run ruff check .
-docker run --rm strong-data:dev uv run ruff format --check .
-docker run --rm strong-data:dev uv run python tools/check_no_private_data.py
+docker compose -f compose.development.yaml build web
+docker compose -f compose.development.yaml run --rm web ruff check .
+docker compose -f compose.development.yaml run --rm web ruff format --check .
+docker compose -f compose.development.yaml run --rm web pytest -q
+docker compose -f compose.development.yaml run --rm web python tools/check_no_private_data.py
+docker compose -f compose.development.yaml down
+```
+
+Production image verification:
+
+```sh
+docker build --target production -t strong-data:prod .
+docker run --rm --network none --read-only --cap-drop ALL \
+  --security-opt no-new-privileges:true --tmpfs /tmp \
+  --env STRONG_SECRET_KEY=synthetic-local-check-key-never-for-runtime-000000000 \
+  --env STRONG_ALLOWED_HOSTS=127.0.0.1 \
+  strong-data:prod python -m tools.check_production
 ```
 
 ## Layout
 
 - `pyproject.toml`, `uv.lock`, `.python-version` — pinned toolchain
-- `tools/` — repository scripts (hygiene guard)
+- `tools/` — repository scripts (hygiene guard, dev entrypoint, production check,
+  image audit, release publisher)
 - `tests/` — `parsing/`, `import/`, `api/`, `browser/`, `fixtures/`
 - `docs/` — usage, development, deployment, backup/recovery, data model, API
-- `.github/workflows/ci.yml` — lint, test and hygiene checks
+- `.github/workflows/ci.yml` — lint, test and hygiene checks in the development
+  container, plus dependency and production-image auditing
+- `.github/workflows/release.yml` — tag-based image publishing with attestations
 
 ## Definition of done for a phase
 
 `uv run pytest -q`, `ruff check`, `ruff format --check` and the hygiene guard all
-pass in the Linux container, with no private data present.
+pass in the Linux development container, the production image passes
+`tools/check_production.py`, with no private data present.
