@@ -1,0 +1,39 @@
+[project]
+name = "strong-data"
+version = "0.1.0"
+description = "Self-hosted Strong workout CSV import with a private SQLite database and a versioned JSON API"
+readme = "README.md"
+requires-python = ">=3.14,<3.15"
+license = "PolyForm-Noncommercial-1.0.0"
+dependencies = [
+    "django>=5.2.8,<5.3",
+    "django-ninja>=1.4,<2",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3,<9",
+    "pytest-django>=4.9,<5",
+    "ruff>=0.8,<1",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+target-version = "py314"
+line-length = 100
+exclude = [
+    ".venv",
+    "planning",
+    "reference",
+    "staticfiles",
+]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-ra"

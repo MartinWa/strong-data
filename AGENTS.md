@@ -1,0 +1,51 @@
+# AGENTS.md
+
+Instructions for automated agents working in this repository.
+
+## Ground rules
+
+- Follow `planning/PLAN.md` phase by phase. Do not implement later-phase behavior
+  while working on an earlier phase.
+- `planning/` and `reference/` are private and gitignored. Never commit their
+  contents, and never read `reference/strong_workouts.csv` except through the
+  opt-in `STRONG_LOCAL_CSV` parity check described in the plan.
+- Never commit CSV, database, backup, `.env`, token or other personal-data files.
+  All examples and fixtures must be wholly synthetic.
+- Use Django migrations, never hand-edited schemas.
+- No comments in code unless explicitly requested.
+
+## Commands
+
+Run from the repository root. Python is pinned by `.python-version` (3.14).
+
+```sh
+uv sync --frozen
+uv lock --check
+uv run pytest -q
+uv run ruff check .
+uv run ruff format --check .
+uv run python tools/check_no_private_data.py
+```
+
+Container-based verification (matches CI's Linux environment):
+
+```sh
+docker build -t strong-data:dev .
+docker run --rm strong-data:dev uv run pytest -q
+docker run --rm strong-data:dev uv run ruff check .
+docker run --rm strong-data:dev uv run ruff format --check .
+docker run --rm strong-data:dev uv run python tools/check_no_private_data.py
+```
+
+## Layout
+
+- `pyproject.toml`, `uv.lock`, `.python-version` — pinned toolchain
+- `tools/` — repository scripts (hygiene guard)
+- `tests/` — `parsing/`, `import/`, `api/`, `browser/`, `fixtures/`
+- `docs/` — usage, development, deployment, backup/recovery, data model, API
+- `.github/workflows/ci.yml` — lint, test and hygiene checks
+
+## Definition of done for a phase
+
+`uv run pytest -q`, `ruff check`, `ruff format --check` and the hygiene guard all
+pass in the Linux container, with no private data present.
