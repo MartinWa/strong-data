@@ -1,5 +1,5 @@
 from .auth import resolve_bearer
-from .contract import API_PREFIX, MAX_BODY_BYTES, ApiError, error_response
+from .contract import API_PREFIX, MAX_BODY_BYTES, auth_error_response, error_response
 
 
 def _django_error_response(response):
@@ -23,8 +23,8 @@ class ApiResponseMiddleware:
         if request.path.rstrip("/") == API_PREFIX.rstrip("/"):
             try:
                 resolve_bearer(request)
-            except ApiError as exc:
-                response = error_response(exc.status, exc.code, exc.message, exc.details)
+            except Exception as exc:
+                response = auth_error_response(exc)
                 response["Cache-Control"] = "no-store"
                 return response
 

@@ -7,7 +7,7 @@ from ninja.security.base import AuthBase
 
 from workouts.models import ApiToken
 
-from .contract import ApiError, error_response
+from .contract import ApiError, auth_error_response
 
 
 def resolve_bearer(request):
@@ -46,8 +46,10 @@ def docs_auth(view):
     def wrapper(request, *args, **kwargs):
         try:
             resolve_bearer(request)
-        except ApiError as exc:
-            return error_response(exc.status, exc.code, exc.message, exc.details)
+        except Exception as exc:
+            response = auth_error_response(exc)
+            response["Cache-Control"] = "no-store"
+            return response
         return view(request, *args, **kwargs)
 
     return wrapper

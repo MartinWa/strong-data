@@ -8,6 +8,8 @@ from django.db import OperationalError, connection
 from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
 
+import api.auth as auth_module
+from api.queries import SESSION_SORT_KEYS, SET_SORT_KEYS
 from tests.api.conftest import SECRET
 from tests.api.test_guards import assert_error
 from workouts.models import ApiToken, WorkoutSession
@@ -192,3 +194,117 @@ def test_only_transient_database_errors_are_service_unavailable(auth, monkeypatc
         fail_with("no such table: workouts_workoutsession"),
     )
     assert_error(auth.get(BASE + "/programs"), 500, "internal_error")
+
+
+@pytest.mark.django_db
+def test_pace_reads_all_totals_in_one_transaction(auth):
+    with CaptureQueriesContext(connection) as captured:
+        response = auth.get(BASE + "/yearly/pace?year=2026&as_of=2026-03-01")
+
+    assert response.status_code == 200
+    sql = [query["sql"].lower() for query in captured.captured_queries]
+    reads = [i for i, query in enumerate(sql) if 'from "workouts_workoutsession"' in query]
+    assert len(reads) == 4
+    assert any(query.startswith("savepoint") and i < reads[0] for i, query in enumerate(sql))
+    assert not any(
+        query.startswith("release savepoint") and reads[0] < i < reads[-1]
+        for i, query in enumerate(sql)
+    )
+    assert any(
+        query.startswith("release savepoint") and i > reads[-1] for i, query in enumerate(sql)
+    )
+
+
+@pytest.mark.django_db
+def test_one_sided_series_ranges_are_capped(client):
+    user = make_token_user(client, "longrange", "longrange-secret")
+    make_session(user, date(2010, 1, 1), "Old")
+    make_session(user, date(2026, 1, 1), "Recent")
+
+    assert_error(
+        client.get(BASE + "/series/sessions?bucket=day&start=2010-01-01"), 422, "validation_error"
+    )
+    assert_error(
+        client.get(BASE + "/series/sessions?bucket=day&end=2026-01-01"), 422, "validation_error"
+    )
+
+
+@pytest.mark.django_db
+def test_short_one_sided_series_range_is_allowed(client):
+    user = make_token_user(client, "shortrange", "shortrange-secret")
+    make_session(user, date(2026, 1, 1), "One")
+    make_session(user, date(2026, 1, 2), "Two")
+
+    body = client.get(BASE + "/series/sessions?bucket=day&start=2026-01-01").json()
+
+    assert body["count"] == 2
+
+
+@pytest.mark.django_db
+def test_raw_pagination_is_applied_in_the_database(auth):
+    with CaptureQueriesContext(connection) as captured:
+        response = auth.get(BASE + "/sets?limit=1")
+
+    assert response.status_code == 200
+    assert response.json()["count"] == 7
+    sql = [query["sql"].lower() for query in captured.captured_queries]
+    paged = [query for query in sql if 'from "workouts_workoutset"' in query and "limit 1" in query]
+    assert paged
+    assert all("order by" in query for query in paged)
+
+
+@pytest.mark.django_db
+def test_authentication_failures_follow_the_error_contract(client, monkeypatch):
+    def fail_with(message):
+        def fail(*args, **kwargs):
+            raise OperationalError(message)
+
+        return fail
+
+    client.defaults["HTTP_AUTHORIZATION"] = f"Bearer {SECRET}"
+    monkeypatch.setattr(auth_module.ApiToken.objects, "filter", fail_with("database is locked"))
+
+    for path in ("/me", "/openapi.json", "/"):
+        assert_error(client.get(BASE + path), 503, "service_unavailable")
+
+    monkeypatch.setattr(
+        auth_module.ApiToken.objects,
+        "filter",
+        fail_with("no such table: workouts_apitoken"),
+    )
+    assert_error(client.get(BASE + "/openapi.json"), 500, "internal_error")
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("bucket", "expected"),
+    [
+        ("day", "9999-12-31"),
+        ("week", "9999-12-27"),
+        ("month", "9999-12-01"),
+        ("year", "9999-01-01"),
+    ],
+)
+def test_final_date_bucket_does_not_overflow(auth, bucket, expected):
+    response = auth.get(BASE + f"/series/volume?bucket={bucket}&start=9999-12-31&end=9999-12-31")
+
+    assert response.status_code == 200, response.content[:300]
+    body = response.json()
+    assert body["count"] == 1
+    assert body["items"][0]["bucket_start"] == expected
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("key", sorted(SESSION_SORT_KEYS))
+def test_every_session_sort_key_works_in_database(auth, key):
+    for sort in (key, f"-{key}"):
+        response = auth.get(BASE + f"/sessions?sort={sort}")
+        assert response.status_code == 200, (sort, response.content[:200])
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("key", sorted(SET_SORT_KEYS))
+def test_every_set_sort_key_works_in_database(auth, key):
+    for sort in (key, f"-{key}"):
+        response = auth.get(BASE + f"/sets?sort={sort}")
+        assert response.status_code == 200, (sort, response.content[:200])

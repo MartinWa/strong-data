@@ -1,4 +1,5 @@
 from django.db import transaction
+from django.db.models import F
 from django.http import Http404
 from ninja import Router
 
@@ -26,7 +27,6 @@ from ..queries import (
     public_set,
     session_record,
     set_record,
-    sort_records,
 )
 from ..schemas import SessionDetailOut, SessionPage, SetPage
 
@@ -42,9 +42,9 @@ SESSION_SORT_FIELDS = {
 }
 
 SET_SORT_FIELDS = {
-    "date": "session_date",
+    "date": "session__session_date",
     "set_time": "set_time",
-    "exercise": "exercise",
+    "exercise": "exercise__name",
     "set_order": "set_order",
     "weight": "weight_kg",
     "reps": "reps",
@@ -61,16 +61,17 @@ def _filters(start, end, limit, offset, sort, fields, allowed, default):
     return fields[key], descending
 
 
-def _paginate(request, records, serializer, limit, offset, key, descending):
-    ordered = sort_records(records, key, descending)
-    page = build_page(
-        request,
-        [serializer(record) for record in ordered[offset : offset + limit]],
-        len(ordered),
-        limit,
-        offset,
-    )
-    return {**envelope(), **page}
+def _order_by(column, descending):
+    value = F(column)
+    primary = value.desc(nulls_last=True) if descending else value.asc(nulls_first=True)
+    return (primary, "id")
+
+
+def _paginate(request, queryset, serialize, limit, offset, order_by):
+    ordered = queryset.order_by(*order_by)
+    count = ordered.count()
+    items = [serialize(item) for item in ordered[offset : offset + limit]]
+    return {**envelope(), **build_page(request, items, count, limit, offset)}
 
 
 @router.get("/sessions", response=SessionPage, tags=["raw"], summary="Paginated sessions")
@@ -89,19 +90,23 @@ def sessions(
     key, descending = _filters(
         start, end, limit, offset, sort, SESSION_SORT_FIELDS, SESSION_SORT_KEYS, "date"
     )
-    records = [
-        session_record(session)
-        for session in owned_sessions(
-            request.auth,
-            start=start,
-            end=end,
-            program=program,
-            exercise=exercise,
-            muscle=muscle,
-            weighted=weighted,
-        )
-    ]
-    return _paginate(request, records, public_session, limit, offset, key, descending)
+    queryset = owned_sessions(
+        request.auth,
+        start=start,
+        end=end,
+        program=program,
+        exercise=exercise,
+        muscle=muscle,
+        weighted=weighted,
+    )
+    return _paginate(
+        request,
+        queryset,
+        lambda session: public_session(session_record(session)),
+        limit,
+        offset,
+        _order_by(key, descending),
+    )
 
 
 @router.get("/sessions/{id}", response=SessionDetailOut, tags=["raw"], summary="Session detail")
@@ -135,19 +140,23 @@ def sets(
         start, end, limit, offset, sort, SET_SORT_FIELDS, SET_SORT_KEYS, "set_time"
     )
     mapping = muscle_map(request.auth)
-    records = [
-        set_record(item, mapping)
-        for item in owned_sets(
-            request.auth,
-            start=start,
-            end=end,
-            program=program,
-            exercise=exercise,
-            muscle=muscle,
-            weighted=weighted,
-        )
-    ]
-    return _paginate(request, records, public_set, limit, offset, key, descending)
+    queryset = owned_sets(
+        request.auth,
+        start=start,
+        end=end,
+        program=program,
+        exercise=exercise,
+        muscle=muscle,
+        weighted=weighted,
+    )
+    return _paginate(
+        request,
+        queryset,
+        lambda item: public_set(set_record(item, mapping)),
+        limit,
+        offset,
+        _order_by(key, descending),
+    )
 
 
 @router.get(
@@ -169,8 +178,12 @@ def exercise_sets(
         start, end, limit, offset, sort, SET_SORT_FIELDS, SET_SORT_KEYS, "set_time"
     )
     mapping = muscle_map(request.auth)
-    records = [
-        set_record(item, mapping)
-        for item in owned_sets(request.auth, start=start, end=end, exercise=name)
-    ]
-    return _paginate(request, records, public_set, limit, offset, key, descending)
+    queryset = owned_sets(request.auth, start=start, end=end, exercise=name)
+    return _paginate(
+        request,
+        queryset,
+        lambda item: public_set(set_record(item, mapping)),
+        limit,
+        offset,
+        _order_by(key, descending),
+    )

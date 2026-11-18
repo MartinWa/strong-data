@@ -9,7 +9,7 @@ from ninja.schema import NinjaGenerateJsonSchema
 from pydantic.json_schema import models_json_schema
 
 from .auth import BearerAuth, docs_auth
-from .contract import ApiError, error_response
+from .contract import ApiError, error_response, is_transient_db_error
 from .schemas import ErrorOut
 
 logger = logging.getLogger("django")
@@ -32,20 +32,6 @@ _STATUS_CODES = {
 _DOCUMENTED_ERRORS = {
     status: message for status, (_, message) in _STATUS_CODES.items() if status != 429
 }
-
-_TRANSIENT_SQLITE_ERRORS = frozenset({"SQLITE_BUSY", "SQLITE_LOCKED"})
-_TRANSIENT_DB_MESSAGES = (
-    "database is locked",
-    "database table is locked",
-    "database schema is locked",
-)
-
-
-def _is_transient_db_error(exc):
-    if getattr(exc.__cause__, "sqlite_errorname", None) in _TRANSIENT_SQLITE_ERRORS:
-        return True
-    message = str(exc).lower()
-    return any(marker in message for marker in _TRANSIENT_DB_MESSAGES)
 
 
 def _document_error_responses(schema):
@@ -111,7 +97,7 @@ def _handle_permission(request, exc):
 
 
 def _handle_operational(request, exc):
-    if _is_transient_db_error(exc):
+    if is_transient_db_error(exc):
         logger.warning("Transient database failure: %s", exc)
         return _from_status(503)
     logger.exception("Unexpected database error", exc_info=exc)

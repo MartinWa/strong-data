@@ -1,7 +1,11 @@
 import json
+import logging
 from datetime import UTC, datetime
 
+from django.db import OperationalError
 from django.http import HttpResponse
+
+logger = logging.getLogger("django")
 
 CONTRACT_VERSION = "1.0"
 MAX_RANGE_DAYS = 1830
@@ -48,3 +52,28 @@ def error_response(status: int, code: str, message: str, details=None) -> HttpRe
     if status == 401:
         response["WWW-Authenticate"] = "Bearer"
     return response
+
+
+_TRANSIENT_SQLITE_ERRORS = frozenset({"SQLITE_BUSY", "SQLITE_LOCKED"})
+_TRANSIENT_DB_MESSAGES = (
+    "database is locked",
+    "database table is locked",
+    "database schema is locked",
+)
+
+
+def is_transient_db_error(exc):
+    if getattr(exc.__cause__, "sqlite_errorname", None) in _TRANSIENT_SQLITE_ERRORS:
+        return True
+    message = str(exc).lower()
+    return any(marker in message for marker in _TRANSIENT_DB_MESSAGES)
+
+
+def auth_error_response(exc):
+    if isinstance(exc, ApiError):
+        return error_response(exc.status, exc.code, exc.message, exc.details)
+    if isinstance(exc, OperationalError) and is_transient_db_error(exc):
+        logger.warning("Transient database failure during authentication: %s", exc)
+        return error_response(503, "service_unavailable", "Service temporarily unavailable")
+    logger.exception("Unexpected authentication failure", exc_info=exc)
+    return error_response(500, "internal_error", "Internal server error")

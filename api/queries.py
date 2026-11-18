@@ -3,11 +3,13 @@ from collections import defaultdict
 from datetime import date, timedelta
 from decimal import Decimal
 
+from django.db import transaction
 from django.utils import timezone
 
 from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
 
 from .contract import ApiError
+from .params import validate_date_range
 
 WEEKDAYS = (
     "Monday",
@@ -163,6 +165,8 @@ def iter_buckets(start, end, bucket):
     final = bucket_start(end, bucket)
     while current <= final:
         yield current
+        if current == final:
+            return
         if bucket == "day":
             current += timedelta(days=1)
         elif bucket == "week":
@@ -250,6 +254,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average):
         effective_end = end or max(acc)
     else:
         effective_start, effective_end = start, end
+    validate_date_range(effective_start, effective_end)
 
     items = []
     values = []
@@ -503,13 +508,15 @@ def pace_data(user, year, as_of):
     previous = year - 1
     cutoff = _cutoff(year, as_of)
 
-    ytd = _totals(owned_sessions(user, start=year_start, end=cutoff))
-    last_ytd = _totals(
-        owned_sessions(user, start=date(previous, 1, 1), end=_cutoff(previous, as_of))
-    )
-    last_full = _totals(
-        owned_sessions(user, start=date(previous, 1, 1), end=date(previous, 12, 31))
-    )
+    with transaction.atomic():
+        ytd = _totals(owned_sessions(user, start=year_start, end=cutoff))
+        last_ytd = _totals(
+            owned_sessions(user, start=date(previous, 1, 1), end=_cutoff(previous, as_of))
+        )
+        last_full = _totals(
+            owned_sessions(user, start=date(previous, 1, 1), end=date(previous, 12, 31))
+        )
+        yearly = yearly_data(user)["items"]
 
     days_in_year = (year_end - year_start).days + 1
     elapsed = max(1, min((cutoff - year_start).days + 1, days_in_year))
@@ -524,7 +531,7 @@ def pace_data(user, year, as_of):
     cumulative_sessions = 0
     cumulative_volume = 0.0
     pace = []
-    for row in yearly_data(user)["items"]:
+    for row in yearly:
         if row["year"] > year:
             continue
         cumulative_sessions += row["sessions"]
