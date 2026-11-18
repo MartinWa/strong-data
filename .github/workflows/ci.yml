@@ -68,7 +68,12 @@ jobs:
       - name: Check the clean development startup path
         run: |
           docker compose -f compose.development.yaml up -d --no-build web
-          docker compose -f compose.development.yaml exec -T web python tools/healthcheck.py
+          attempts=60
+          until docker compose -f compose.development.yaml exec -T web python tools/healthcheck.py; do
+            attempts=$((attempts - 1))
+            test "$attempts" -gt 0
+            sleep 1
+          done
           docker compose -f compose.development.yaml exec -T web python manage.py migrate --check
       - name: Run application tests
         run: docker compose -f compose.development.yaml run --rm web pytest -q
