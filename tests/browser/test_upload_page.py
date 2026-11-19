@@ -194,10 +194,27 @@ def test_preview_caps_the_session_table_behind_show_all(client):
 
     assert "Showing the first 10 of 12 sessions." in content
     assert "Show all 12 sessions" in content
-    assert content.index("2026-01-10") < content.index("Show all 12 sessions")
+    assert content.index("2026-01-12") < content.index("2026-01-03")
+    assert content.index("2026-01-03") < content.index("Show all 12 sessions")
     tail = content[content.index("Show all 12 sessions") : content.index("Sample sets")]
-    assert "2026-01-11" in tail
-    assert tail.count("2026-01-11") == 1
+    assert "2026-01-02" in tail
+    assert "2026-01-01" in tail
+    assert "2026-01-12" not in tail
+
+
+@pytest.mark.django_db
+def test_preview_lists_sessions_newest_first_like_the_sessions_page(client):
+    signed_in(client)
+
+    upload(client, TWO_SESSIONS)
+    content = client.get(reverse("preview")).content.decode()
+
+    assert content.index('<td class="nowrap">2026-02-10</td>') < content.index(
+        '<td class="nowrap">2026-01-05</td>'
+    )
+    sample = content[content.index("Sample sets") :]
+    assert sample.index("Barbell Row") < sample.index("Chest Fly")
+    assert "2026-02-10 18:00" in sample
 
 
 @pytest.mark.django_db

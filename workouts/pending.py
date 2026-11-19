@@ -115,6 +115,11 @@ def group_warnings(warnings: tuple[str, ...] | list[str]) -> list[dict]:
 
 
 def summarize(parsed: ParsedWorkouts) -> dict:
+    ordered_sessions = sorted(
+        reversed(parsed.sessions),
+        key=lambda session: session.session_date,
+        reverse=True,
+    )
     sessions = [
         {
             "date": session.session_date.isoformat(),
@@ -124,10 +129,10 @@ def summarize(parsed: ParsedWorkouts) -> dict:
             "total_volume_kg": str(round(session.total_volume_kg, 2)),
             "duration_min": session.duration_min,
         }
-        for session in parsed.sessions
+        for session in ordered_sessions
     ]
     sample_sets = []
-    for session in parsed.sessions:
+    for session in ordered_sessions:
         for item in session.sets:
             if len(sample_sets) >= SAMPLE_SET_LIMIT:
                 break

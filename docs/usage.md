@@ -36,9 +36,11 @@ available at the point of use.
    described once, on the preview page.
 2. **Preview** (`/preview/`) — review the session summary (date, workout,
    program, set count, volume, duration), the first 20 sets as a sample, and any
-   warnings, then press *Confirm import*. The summary covers every session; only
-   the set table is sampled, and confirming imports all sets. Sessions beyond the
-   first 10 are behind *Show all* so the confirm bar stays in reach. The sticky
+   warnings, then press *Confirm import*. Both tables are newest first, like the
+   Sessions page, so the newest session is the first row and the sample starts
+   with its sets. The summary covers every session; only the set table is
+   sampled, and confirming imports all sets. Sessions beyond the first 10 are
+   behind *Show all* so the confirm bar stays in reach. The sticky
    bar at the bottom states what confirming replaces (`Confirming replaces 14
    sessions and 99 sets currently stored.`) or, on an empty account, that this is
    the first import.

@@ -123,6 +123,27 @@ def test_summarize_caps_the_sample_and_reports_the_total():
     assert summary["warning_groups"] == []
 
 
+def test_summarize_orders_sessions_newest_first_like_the_sessions_page():
+    rows = [
+        "2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,80,5,0,0,8",
+        "2026-02-10 18:00:00,Pull Day,47m,Barbell Row,1,60,8,0,0,8",
+        "2026-01-05 19:00:00,Legs Day,40m,Back Squat,1,100,5,0,0,9",
+    ]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert [session["date"] for session in summary["sessions"]] == [
+        "2026-02-10",
+        "2026-01-05",
+        "2026-01-05",
+    ]
+    assert [session["workout_name"] for session in summary["sessions"]][1:] == [
+        "Push Day",
+        "Legs Day",
+    ]
+    assert summary["sample_sets"][0]["exercise_name"] == "Barbell Row"
+
+
 def test_summarize_groups_warnings_by_cause_with_counts():
     rows = [
         f"2026-01-05 09:{minute:02d}:00,Push Day,54m,Exercise {minute:02d},1,80,5,0,0,{rpe}"
