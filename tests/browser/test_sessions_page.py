@@ -91,14 +91,16 @@ def test_program_is_shown_when_it_differs_from_the_workout_name(client):
 
 
 @pytest.mark.django_db
-def test_empty_state_is_not_repeated(client):
+def test_empty_state_states_the_state_once_and_leaves_the_action_to_the_button(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     client.force_login(user)
 
     content = client.get(reverse("sessions")).content.decode()
 
     assert content.count("No sessions yet.") == 1
-    assert content.count("Upload a Strong CSV export to see your workouts here.") == 1
+    assert content.count("Your imported workouts appear here, newest first.") == 1
+    assert "Upload a Strong CSV export" not in content
+    assert content.count(">Upload CSV export<") == 1
 
 
 @pytest.mark.django_db

@@ -268,7 +268,8 @@ def test_sessions_empty_state_prompts_upload(client):
 
     assert response.status_code == 200
     assert "No sessions yet." in content
-    assert "Upload a Strong CSV export to see your workouts here." in content
+    assert "Your imported workouts appear here, newest first." in content
+    assert "Upload a Strong CSV export" not in content
     assert 'href="/upload/"' in content
     assert 'aria-label="Filter sessions"' not in content
 
@@ -339,7 +340,7 @@ def test_sessions_no_match_state_offers_clear(client):
 
     content = client.get(reverse("sessions"), {"q": "deadlift"}).content.decode()
 
-    assert "No sessions match these filters." in content
+    assert content.count("No sessions match these filters.") == 1
     assert "Clear filters" in content
     assert "No sessions yet." not in content
 
