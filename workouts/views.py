@@ -84,6 +84,7 @@ def upload(request):
 
 @login_required
 def preview(request):
+    pending.purge_stale()
     stored = request.session.get(PENDING_IMPORT_KEY)
     if not stored:
         return redirect("upload")
@@ -129,6 +130,7 @@ def preview(request):
 
 @login_required
 def history(request):
+    pending.purge_stale()
     sessions = WorkoutSession.objects.filter(owner=request.user).prefetch_related("sets__exercise")
     page = Paginator(sessions, HISTORY_PAGE_SIZE).get_page(request.GET.get("page"))
     return render(request, "workouts/history.html", {"page": page})

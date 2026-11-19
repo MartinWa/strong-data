@@ -23,8 +23,9 @@ sees only their own imports, corrections and tokens.
 
 The preview is tied to the file you uploaded: if you upload again, the old
 preview is discarded and you must confirm the new one. A pending preview expires
-after one hour, and the uploaded file is kept outside the session store only
-until you confirm, discard or let it expire.
+after one hour. The uploaded file is never stored in your session; it is deleted
+when you confirm or discard the preview, and expired files are swept whenever you
+next upload or open the preview or history pages.
 
 ### Confirming replaces your existing data
 
@@ -79,7 +80,9 @@ guess on the *Muscle groups* screen (`/corrections/`); the correction applies to
 that exercise name for your account and is preserved by later imports. The field
 accepts any name, so you can add groups the heuristic does not know (for example
 `Forearms` or `Traps`); the suggestions are offered as autocomplete. Exercises the
-heuristic cannot place are grouped under `Other`.
+heuristic cannot place are grouped under `Other`. The heuristic matches English
+exercise names, so names in other languages usually fall back to `Other` and are
+worth correcting by hand.
 
 ## API tokens
 

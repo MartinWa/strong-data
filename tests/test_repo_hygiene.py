@@ -121,5 +121,13 @@ def test_content_scan_allows_synthetic_examples(tmp_path):
     assert content_violations([str(sample)]) == []
 
 
+def test_content_scan_honours_the_allow_marker(tmp_path):
+    sample = tmp_path / "notes.md"
+    email = "real.person" + "@" + "corp.example"
+    sample.write_text(f"contact {email}  <!-- hygiene: allow -->\n", encoding="utf-8")
+
+    assert content_violations([str(sample)]) == []
+
+
 def test_repository_content_is_clean():
     assert content_violations(candidate_files()) == []

@@ -1,5 +1,7 @@
 import csv
 import hashlib
+import os
+import time
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -362,3 +364,31 @@ def test_oversized_upload_is_rejected_before_the_file_is_read(client):
 
     assert response.status_code == 200
     assert b"CSV export must be 10 MB or smaller." in response.content
+
+
+@pytest.mark.django_db
+def test_token_list_shows_the_expiry(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    client.post(reverse("tokens"), {"name": "reader", "expires_at": "2030-01-01T00:00"})
+
+    response = client.get(reverse("tokens"))
+
+    assert b"expires 2030-01-01 00:00" in response.content
+
+
+@pytest.mark.django_db
+def test_preview_sweeps_expired_pending_files(client, tmp_path):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    upload(client)
+    stored = client.session["pending_import"]
+    expired = time.time() - 7200
+    for suffix in ("csv", "json"):
+        os.utime(tmp_path / "pending" / f"{stored['id']}.{suffix}", (expired, expired))
+
+    response = client.get(reverse("preview"))
+
+    assert response.status_code == 302
+    assert response.url == reverse("upload")
+    assert list((tmp_path / "pending").iterdir()) == []

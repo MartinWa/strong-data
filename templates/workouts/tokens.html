@@ -9,6 +9,7 @@
   {% for token in tokens %}
   <li>
     {{ token.name }} ({{ token.prefix }}…)
+    {% if token.expires_at %}— expires {{ token.expires_at|date:"Y-m-d H:i" }}{% endif %}
     {% if token.revoked_at %}
     — revoked
     {% else %}

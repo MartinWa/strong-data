@@ -1,3 +1,4 @@
+import contextlib
 import json
 import os
 import re
@@ -20,6 +21,14 @@ def pending_dir() -> Path:
     return Path(tempfile.gettempdir()) / "strong-data-pending"
 
 
+def _ensure_dir() -> Path:
+    base = pending_dir()
+    base.mkdir(parents=True, exist_ok=True, mode=0o700)
+    with contextlib.suppress(OSError):
+        base.chmod(0o700)
+    return base
+
+
 def _paths(import_id: str) -> tuple[Path, Path] | None:
     if not IMPORT_ID_PATTERN.fullmatch(import_id):
         return None
@@ -32,7 +41,7 @@ def save(import_id: str, raw: str, parsed: ParsedWorkouts) -> None:
     if paths is None:
         raise ValueError("Invalid import id")
     csv_path, summary_path = paths
-    csv_path.parent.mkdir(parents=True, exist_ok=True)
+    _ensure_dir()
     csv_path.write_text(raw, encoding="utf-8")
     csv_path.chmod(0o600)
     summary_path.write_text(json.dumps(summarize(parsed)), encoding="utf-8")
@@ -44,9 +53,10 @@ def load_summary(import_id: str) -> dict | None:
     if paths is None:
         return None
     try:
-        return json.loads(paths[1].read_text(encoding="utf-8"))
+        summary = json.loads(paths[1].read_text(encoding="utf-8"))
     except OSError, ValueError:
         return None
+    return summary if isinstance(summary, dict) else None
 
 
 def load_csv(import_id: str) -> str | None:
@@ -64,15 +74,19 @@ def discard(import_id: str) -> None:
     if paths is None:
         return
     for path in paths:
-        path.unlink(missing_ok=True)
+        try:
+            path.unlink(missing_ok=True)
+        except OSError:
+            continue
 
 
 def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> None:
-    base = pending_dir()
-    if not base.is_dir():
+    try:
+        entries = list(pending_dir().iterdir())
+    except OSError:
         return
     cutoff = time.time() - ttl_seconds
-    for path in base.iterdir():
+    for path in entries:
         try:
             if path.stat().st_mtime < cutoff:
                 path.unlink()

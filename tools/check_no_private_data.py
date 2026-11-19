@@ -1,4 +1,9 @@
-"""Fail when private data is tracked by git, by name or by content."""
+"""Fail when private data is tracked by git, by name or by content.
+
+A line that legitimately needs to look like private data (for example a security
+contact address) can opt out of the content scan by carrying the marker
+``hygiene: allow``.
+"""
 
 from __future__ import annotations
 
@@ -25,6 +30,7 @@ BAD_SUFFIXES = (
 )
 BAD_DIRECTORIES = frozenset({"planning", "reference"})
 MAX_SCAN_BYTES = 2 * 1024 * 1024
+ALLOW_MARKER = "hygiene: allow"
 
 CONTENT_PATTERNS = (
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
@@ -69,6 +75,8 @@ def content_violations(paths: Iterable[str]) -> list[str]:
         except OSError, UnicodeDecodeError:
             continue
         for line_number, line in enumerate(text.splitlines(), start=1):
+            if ALLOW_MARKER in line:
+                continue
             for label, pattern in CONTENT_PATTERNS:
                 if pattern.search(line):
                     findings.append(f"{path}:{line_number}: {label}")

@@ -40,6 +40,7 @@ cp .env.example .env
 | `STRONG_ALLOWED_HOSTS` | Comma-separated public hostnames the proxy forwards, e.g. `workouts.example.com`. |
 | `STRONG_DB_PATH` | SQLite path inside the container; keep the default `/app/data/strong.sqlite3` so it lands on the data volume. |
 | `STRONG_STATIC_ROOT` | Where collected static files live (the image ships them at `/app/staticfiles`). Override only for special setups. |
+| `STRONG_PENDING_DIR` | Where previewed-but-unconfirmed uploads are staged. Defaults to `/tmp/strong-data-pending`, which lands on the container's `/tmp` tmpfs; override only if you mount a dedicated volume. |
 | `STRONG_CSRF_TRUSTED_ORIGINS` | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
 | `STRONG_PORT` | Listen port inside the container (default `8000`). |
 | `STRONG_TRUSTED_PROXY` | Address allowed to set forwarding headers. No default: without it, `X-Forwarded-Proto` is ignored and HTTPS form submissions fail the CSRF origin check. Set it to the proxy's container address, or to `*` when the app is reachable only from the proxy network (the example file ships `*`). |

@@ -13,6 +13,20 @@ MAX_LIMIT = 200
 MAX_BODY_BYTES = 10 * 1024 * 1024
 API_PREFIX = "/api/v1/"
 
+STATUS_CODES = {
+    400: ("bad_request", "Bad request"),
+    401: ("invalid_credentials", "A valid bearer token is required"),
+    403: ("permission_denied", "Permission denied"),
+    404: ("not_found", "Resource not found"),
+    405: ("method_not_allowed", "Method not allowed"),
+    409: ("conflict", "Conflict"),
+    413: ("payload_too_large", "Request body too large"),
+    415: ("unsupported_media_type", "Unsupported media type"),
+    422: ("validation_error", "Validation failed"),
+    500: ("internal_error", "Internal server error"),
+    503: ("service_unavailable", "Service temporarily unavailable"),
+}
+
 
 class ApiError(Exception):
     def __init__(self, status: int, code: str, message: str, details=None) -> None:
