@@ -14,6 +14,7 @@ from ..params import (
     StrictQuery,
     build_page,
     parse_sort,
+    sort_query,
     validate_date_range,
     validate_pagination,
 )
@@ -85,7 +86,7 @@ def sessions(
     weighted: OptBoolParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
     offset: IntParam = StrictQuery(0),
-    sort: str | None = StrictQuery(None),
+    sort: str | None = sort_query(SESSION_SORT_KEYS, "date"),
 ):
     key, descending = _filters(
         start, end, limit, offset, sort, SESSION_SORT_FIELDS, SESSION_SORT_KEYS, "date"
@@ -134,7 +135,7 @@ def sets(
     weighted: OptBoolParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
     offset: IntParam = StrictQuery(0),
-    sort: str | None = StrictQuery(None),
+    sort: str | None = sort_query(SET_SORT_KEYS, "set_time"),
 ):
     key, descending = _filters(
         start, end, limit, offset, sort, SET_SORT_FIELDS, SET_SORT_KEYS, "set_time"
@@ -172,7 +173,7 @@ def exercise_sets(
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
     offset: IntParam = StrictQuery(0),
-    sort: str | None = StrictQuery(None),
+    sort: str | None = sort_query(SET_SORT_KEYS, "set_time"),
 ):
     key, descending = _filters(
         start, end, limit, offset, sort, SET_SORT_FIELDS, SET_SORT_KEYS, "set_time"

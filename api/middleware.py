@@ -1,15 +1,16 @@
 from .auth import resolve_bearer
-from .contract import API_PREFIX, MAX_BODY_BYTES, auth_error_response, error_response
+from .contract import API_PREFIX, MAX_BODY_BYTES, STATUS_CODES, auth_error_response, error_response
+
+CONVERTED_STATUSES = (400, 404, 405)
 
 
 def _django_error_response(response):
     if response.get("Content-Type", "").startswith("application/json"):
         return None
-    if response.status_code == 404:
-        return error_response(404, "not_found", "Resource not found")
-    if response.status_code == 405:
-        return error_response(405, "method_not_allowed", "Method not allowed")
-    return None
+    if response.status_code not in CONVERTED_STATUSES:
+        return None
+    code, message = STATUS_CODES[response.status_code]
+    return error_response(response.status_code, code, message)
 
 
 class ApiResponseMiddleware:

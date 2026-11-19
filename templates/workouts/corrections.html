@@ -1,22 +1,53 @@
 {% extends "base.html" %}
 {% block title %}Muscle groups — strong-data{% endblock %}
 {% block content %}
-<h1>Muscle groups</h1>
-<p>Corrections survive re-imports.</p>
+<div class="page-head">
+  <h1>Muscle groups</h1>
+  <p class="lede">Corrections survive re-imports. Any name is accepted, so you can add groups the heuristic does not know.</p>
+</div>
+
+<datalist id="muscle-group-options">
+  {% for choice in muscle_choices %}<option value="{{ choice }}">{% endfor %}
+</datalist>
+
 {% if not metas %}
-<p>No exercises imported yet.</p>
+<div class="empty">
+  <p>No exercises imported yet.</p>
+  <a class="btn btn-primary" href="{% url 'upload' %}">Upload a CSV export</a>
+</div>
+{% else %}
+<div class="card">
+  <div class="card-head">
+    <h2>Exercises</h2>
+    <span class="badge">{{ metas|length }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Exercise</th>
+          <th>Muscle group</th>
+          <th class="tight"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for meta in metas %}
+        <tr>
+          <td>{{ meta.exercise_name }}</td>
+          <td>
+            <form method="post" class="inline-form">
+              {% csrf_token %}
+              <input type="hidden" name="exercise_name" value="{{ meta.exercise_name }}">
+              <input id="muscle-{{ forloop.counter }}" name="muscle_group" value="{{ meta.muscle_group }}" list="muscle-group-options" maxlength="64" aria-label="Muscle group for {{ meta.exercise_name }}">
+              <button class="btn btn-sm" type="submit">Save</button>
+            </form>
+          </td>
+          <td class="tight"></td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
 {% endif %}
-{% for meta in metas %}
-<form method="post">
-  {% csrf_token %}
-  <input type="hidden" name="exercise_name" value="{{ meta.exercise_name }}">
-  <label for="muscle-{{ forloop.counter }}">{{ meta.exercise_name }}</label>
-  <select id="muscle-{{ forloop.counter }}" name="muscle_group">
-    {% for value, label in form.fields.muscle_group.choices %}
-    <option value="{{ value }}" {% if value == meta.muscle_group %}selected{% endif %}>{{ label }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit">Save</button>
-</form>
-{% endfor %}
 {% endblock %}

@@ -1,6 +1,7 @@
 import hashlib
 from datetime import timedelta
 
+from django.contrib.staticfiles import finders
 from django.test import Client
 from django.utils import timezone
 
@@ -73,6 +74,38 @@ def test_token_prefix_collision_rejected(alice):
     )
 
 
+def test_docs_page_requires_token(auth):
+    assert_error(Client().get(BASE + "/docs"), 401, "invalid_credentials")
+    response = auth.get(BASE + "/docs")
+    assert response.status_code == 200
+    assert response["Cache-Control"] == "no-store"
+    assert b"swagger" in response.content.lower()
+
+
+def test_docs_serve_their_assets_locally(alice):
+    session = Client()
+    session.force_login(alice)
+
+    content = session.get(BASE + "/docs").content.decode()
+    assert "/static/ninja/swagger-ui-bundle.js" in content
+    assert "cdn.jsdelivr.net" not in content
+    assert finders.find("ninja/swagger-ui-bundle.js")
+
+
+def test_docs_and_schema_allow_a_logged_in_session(alice):
+    session = Client()
+    session.force_login(alice)
+
+    docs = session.get(BASE + "/docs")
+    assert docs.status_code == 200
+    assert docs["Cache-Control"] == "no-store"
+
+    schema = session.get(BASE + "/openapi.json")
+    assert schema.status_code == 200
+    assert schema["Cache-Control"] == "no-store"
+    assert "/api/v1/summary" in schema.json()["paths"]
+
+
 def test_openapi_requires_token(auth):
     assert_error(Client().get(BASE + "/openapi.json"), 401, "invalid_credentials")
     response = auth.get(BASE + "/openapi.json")
@@ -87,6 +120,23 @@ def test_openapi_requires_token(auth):
         "/api/v1/sessions/{id}",
     ]:
         assert expected in paths
+
+
+def test_openapi_documents_sort_keys(auth):
+    paths = auth.get(BASE + "/openapi.json").json()["paths"]
+    sessions = paths["/api/v1/sessions"]["get"]["parameters"]
+    sets = paths["/api/v1/sets"]["get"]["parameters"]
+
+    session_sort = next(item for item in sessions if item["name"] == "sort")
+    assert (
+        "Allowed keys: date, program, sets, start_time, volume, workout_name"
+        in (session_sort["description"])
+    )
+    assert "Default: date" in session_sort["description"]
+
+    set_sort = next(item for item in sets if item["name"] == "sort")
+    assert "Default: set_time" in set_sort["description"]
+    assert "est_1rm" in set_sort["description"]
 
 
 def test_method_body_and_media_type_guards(auth):

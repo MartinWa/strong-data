@@ -1,10 +1,75 @@
 {% extends "base.html" %}
 {% block title %}Log in — strong-data{% endblock %}
 {% block content %}
-<h1>Log in</h1>
-<form method="post">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">Log in</button>
-</form>
+<div class="auth">
+  <div class="card auth-card">
+    <h1>Log in</h1>
+    <form method="post" class="form">
+      {% csrf_token %}
+      {% if form.non_field_errors %}
+      <div class="msg msg-error">{{ form.non_field_errors|join:" " }}</div>
+      {% endif %}
+      {% include "partials/field.html" with field=form.username %}
+      <div class="field{% if form.password.errors %} field-invalid{% endif %}">
+        <label for="{{ form.password.id_for_label }}">Password <span class="req" aria-hidden="true">*</span></label>
+        <div class="password-field">
+          {{ form.password }}
+          <button class="password-toggle" type="button" data-password-toggle="#{{ form.password.id_for_label }}" aria-pressed="false" aria-controls="{{ form.password.id_for_label }}" aria-label="Show password" title="Show password">
+            <svg class="icon" data-icon-hidden width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+            <svg class="icon" data-icon-revealed width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg>
+          </button>
+        </div>
+        {% if form.password.errors %}<div id="{{ form.password.auto_id }}_error">{% for error in form.password.errors %}<p class="error">{{ error }}</p>{% endfor %}</div>{% endif %}
+      </div>
+      <label class="checkbox" for="{{ form.remember_me.id_for_label }}">
+        {{ form.remember_me }}
+        <span>{{ form.remember_me.label }}</span>
+      </label>
+      <button class="btn btn-primary btn-block" type="submit">Log in</button>
+    </form>
+    <p class="auth-note">Your administrator creates accounts. There is no open registration.</p>
+  </div>
+</div>
+<script>
+document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
+  var field = document.querySelector(button.dataset.passwordToggle);
+  if (!field) return;
+  function reveal(revealed) {
+    field.type = revealed ? 'text' : 'password';
+    button.setAttribute('aria-pressed', revealed ? 'true' : 'false');
+    var label = revealed ? 'Hide password' : 'Show password';
+    button.setAttribute('aria-label', label);
+    button.title = label;
+  }
+  function hide() {
+    reveal(false);
+  }
+  button.addEventListener('pointerdown', function () {
+    reveal(true);
+  });
+  ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (name) {
+    button.addEventListener(name, hide);
+  });
+  var keyboardPress = false;
+  button.addEventListener('keydown', function (event) {
+    if (event.key === ' ' || event.key === 'Enter') {
+      event.preventDefault();
+      keyboardPress = true;
+      reveal(true);
+    }
+  });
+  button.addEventListener('keyup', function (event) {
+    if (event.key === ' ' || event.key === 'Enter') hide();
+  });
+  button.addEventListener('click', function (event) {
+    if (event.detail !== 0 || keyboardPress) {
+      keyboardPress = false;
+      return;
+    }
+    reveal(button.getAttribute('aria-pressed') !== 'true');
+  });
+  button.addEventListener('blur', hide);
+  window.addEventListener('blur', hide);
+});
+</script>
 {% endblock %}

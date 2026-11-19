@@ -9,29 +9,12 @@ from ninja.schema import NinjaGenerateJsonSchema
 from pydantic.json_schema import models_json_schema
 
 from .auth import BearerAuth, docs_auth
-from .contract import ApiError, error_response, is_transient_db_error
+from .contract import STATUS_CODES, ApiError, error_response, is_transient_db_error
 from .schemas import ErrorOut
 
 logger = logging.getLogger("django")
 
-_STATUS_CODES = {
-    400: ("bad_request", "Bad request"),
-    401: ("invalid_credentials", "A valid bearer token is required"),
-    403: ("permission_denied", "Permission denied"),
-    404: ("not_found", "Resource not found"),
-    405: ("method_not_allowed", "Method not allowed"),
-    409: ("conflict", "Conflict"),
-    413: ("payload_too_large", "Request body too large"),
-    415: ("unsupported_media_type", "Unsupported media type"),
-    422: ("validation_error", "Validation failed"),
-    429: ("throttled", "Too many requests"),
-    500: ("internal_error", "Internal server error"),
-    503: ("service_unavailable", "Service temporarily unavailable"),
-}
-
-_DOCUMENTED_ERRORS = {
-    status: message for status, (_, message) in _STATUS_CODES.items() if status != 429
-}
+_DOCUMENTED_ERRORS = {status: message for status, (_, message) in STATUS_CODES.items()}
 
 
 def _document_error_responses(schema):
@@ -60,7 +43,7 @@ class DocumentedNinjaAPI(NinjaAPI):
 
 
 def _from_status(status, message=None, details=None):
-    code, default_message = _STATUS_CODES.get(status, ("error", "Request failed"))
+    code, default_message = STATUS_CODES.get(status, ("error", "Request failed"))
     return error_response(status, code, message or default_message, details)
 
 
@@ -69,7 +52,7 @@ api = DocumentedNinjaAPI(
     version="1.0.0",
     description="Read-only, owner-scoped workout data API.",
     openapi_url="/openapi.json",
-    docs_url=None,
+    docs_url="/docs",
     urls_namespace="api-v1",
     auth=BearerAuth(),
     docs_decorator=docs_auth,

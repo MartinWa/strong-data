@@ -5,7 +5,7 @@ from waitress import serve
 
 from strong_data.wsgi import application
 
-TRUSTED_PROXY = os.environ.get("STRONG_TRUSTED_PROXY", "*")
+TRUSTED_PROXY = os.environ.get("STRONG_TRUSTED_PROXY", "").strip() or None
 PORT = int(os.environ.get("STRONG_PORT", "8000"))
 
 call_command("migrate", interactive=False)

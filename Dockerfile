@@ -68,9 +68,11 @@ COPY workouts /app/workouts
 COPY templates /app/templates
 COPY LICENSE NOTICE /app/
 COPY tools/__init__.py tools/check_production.py tools/healthcheck.py tools/serve.py /app/tools/
-RUN python manage.py collectstatic --noinput
+RUN STRONG_SECRET_KEY=synthetic-build-key-never-for-runtime-000000000000 \
+    python manage.py collectstatic --noinput
 USER 1000:1000
-RUN python -c "from strong_data.wsgi import application; assert application"
+RUN STRONG_SECRET_KEY=synthetic-build-key-never-for-runtime-000000000000 \
+    python -c "from strong_data.wsgi import application; assert application"
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD python tools/healthcheck.py
 CMD ["python", "-m", "tools.serve"]

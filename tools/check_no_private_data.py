@@ -1,7 +1,13 @@
-"""Fail when a private-data file is tracked by git."""
+"""Fail when private data is tracked by git, by name or by content.
+
+A line that legitimately needs to look like private data (for example a security
+contact address) can opt out of the content scan by carrying the marker
+``hygiene: allow``.
+"""
 
 from __future__ import annotations
 
+import re
 import subprocess
 from collections.abc import Iterable
 from pathlib import Path, PurePosixPath
@@ -23,6 +29,23 @@ BAD_SUFFIXES = (
     ".zip",
 )
 BAD_DIRECTORIES = frozenset({"planning", "reference"})
+MAX_SCAN_BYTES = 2 * 1024 * 1024
+ALLOW_MARKER = "hygiene: allow"
+
+CONTENT_PATTERNS = (
+    ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
+    ("AWS access key", re.compile(r"AKIA[0-9A-Z]{16}")),
+    ("GitHub token", re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}")),
+    ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
+    (
+        "email address",
+        re.compile(r"[A-Za-z0-9._%+-]+@(?!example\.(?:com|org|net)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
+    ),
+    (
+        "absolute host path",
+        re.compile(r"(?:[A-Za-z]:\\Users\\|/Users/[A-Za-z]|/home/(?!developer\b)[A-Za-z])"),
+    ),
+)
 
 
 def is_violation(path: str) -> bool:
@@ -39,6 +62,25 @@ def is_violation(path: str) -> bool:
 
 def find_violations(paths: Iterable[str]) -> list[str]:
     return sorted(path for path in paths if is_violation(path))
+
+
+def content_violations(paths: Iterable[str]) -> list[str]:
+    findings = []
+    for path in paths:
+        candidate = Path(path)
+        try:
+            if candidate.stat().st_size > MAX_SCAN_BYTES:
+                continue
+            text = candidate.read_text(encoding="utf-8")
+        except OSError, UnicodeDecodeError:
+            continue
+        for line_number, line in enumerate(text.splitlines(), start=1):
+            if ALLOW_MARKER in line:
+                continue
+            for label, pattern in CONTENT_PATTERNS:
+                if pattern.search(line):
+                    findings.append(f"{path}:{line_number}: {label}")
+    return findings
 
 
 def tracked_files() -> list[str]:
@@ -72,13 +114,20 @@ def candidate_files() -> list[str]:
 
 
 def main() -> int:
-    violations = find_violations(candidate_files())
+    files = candidate_files()
+    violations = find_violations(files)
+    findings = content_violations(files)
     if violations:
         print("Tracked private-data files found:")
         for path in violations:
             print(f"  {path}")
+    if findings:
+        print("Private data found in tracked file contents:")
+        for finding in findings:
+            print(f"  {finding}")
+    if violations or findings:
         return 1
-    print("Hygiene check passed: no private-data files are tracked.")
+    print("Hygiene check passed: no private-data files or content are tracked.")
     return 0
 
 

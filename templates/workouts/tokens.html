@@ -1,29 +1,98 @@
 {% extends "base.html" %}
 {% block title %}Tokens — strong-data{% endblock %}
 {% block content %}
-<h1>API tokens</h1>
+<div class="page-head">
+  <h1>API tokens</h1>
+  <p class="lede">The JSON API is read-only and authenticated with a bearer token. Only a hash and an 8-character prefix are stored.</p>
+</div>
+
 {% if secret %}
-<p>Secret: <code>{{ secret }}</code>. Copy it now; it is shown only once.</p>
+<div class="secret">
+  <p class="secret-label">Secret:</p>
+  <div class="secret-row">
+    <code id="token-secret">{{ secret }}</code>
+    <button class="btn btn-sm" type="button" data-copy="#token-secret">Copy</button>
+  </div>
+  <p class="hint">Copy it now; it is shown only once.</p>
+</div>
 {% endif %}
-<ul>
-  {% for token in tokens %}
-  <li>
-    {{ token.name }} ({{ token.prefix }}…)
-    {% if token.revoked_at %}
-    — revoked
-    {% else %}
-    <form method="post" action="{% url 'revoke_token' token.pk %}">
-      {% csrf_token %}
-      <button type="submit">Revoke</button>
-    </form>
-    {% endif %}
-  </li>
-  {% endfor %}
-</ul>
-<h2>Create a token</h2>
-<form method="post">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">Create</button>
-</form>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Your tokens</h2>
+    <span class="badge">{{ tokens|length }}</span>
+  </div>
+  {% if not tokens %}
+  <p class="muted">No tokens yet. Create one below to read your data over the API.</p>
+  {% else %}
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Name</th>
+          <th>Prefix</th>
+          <th>Created</th>
+          <th>Expiry</th>
+          <th>Status</th>
+          <th class="tight"></th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for token in tokens %}
+        <tr>
+          <td>{{ token.name }}</td>
+          <td><code>{{ token.prefix }}…</code></td>
+          <td class="muted">{{ token.created_at|date:"Y-m-d" }}</td>
+          <td class="muted">{% if token.expires_at %}expires {{ token.expires_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+          <td>
+            {% if token.revoked_at %}
+            <span class="badge badge-danger">revoked</span>
+            {% elif token.is_expired %}
+            <span class="badge">expired</span>
+            {% else %}
+            <span class="badge badge-success">active</span>
+            {% endif %}
+          </td>
+          <td class="tight">
+            {% if not token.revoked_at %}
+            <form method="post" action="{% url 'revoke_token' token.pk %}" class="inline-form">
+              {% csrf_token %}
+              <button class="btn btn-sm btn-danger" type="submit">Revoke</button>
+            </form>
+            {% endif %}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% endif %}
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Create a token</h2>
+  </div>
+  <form method="post" class="form">
+    {% csrf_token %}
+    {% include "partials/field.html" with field=form.name %}
+    {% include "partials/field.html" with field=form.expires_at %}
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Create</button>
+    </div>
+  </form>
+</div>
+
+<script>
+document.querySelectorAll('[data-copy]').forEach(function (button) {
+  button.addEventListener('click', function () {
+    var target = document.querySelector(button.dataset.copy);
+    if (!target || !navigator.clipboard) return;
+    navigator.clipboard.writeText(target.textContent.trim()).then(function () {
+      button.textContent = 'Copied';
+      setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+    });
+  });
+});
+</script>
 {% endblock %}

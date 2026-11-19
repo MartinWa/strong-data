@@ -1,4 +1,5 @@
 from django import forms
+from django.utils import timezone
 
 from parsing.csv_parser import MUSCLE_GUESS
 
@@ -13,11 +14,16 @@ class UploadForm(forms.Form):
 
 class MuscleGroupForm(forms.Form):
     exercise_name = forms.CharField(widget=forms.HiddenInput())
-    muscle_group = forms.ChoiceField(choices=[(value, value) for value in MUSCLE_CHOICES])
+    muscle_group = forms.CharField(max_length=64)
 
 
 class TokenForm(forms.Form):
     name = forms.CharField(max_length=255)
+    expires_at = forms.DateTimeField(
+        required=False,
+        widget=forms.DateTimeInput(attrs={"type": "datetime-local"}, format="%Y-%m-%dT%H:%M"),
+        help_text="Optional. The token stops working after this time.",
+    )
 
     def __init__(self, *args, owner=None, **kwargs):
         super().__init__(*args, **kwargs)
@@ -28,3 +34,9 @@ class TokenForm(forms.Form):
         if self.owner is not None and ApiToken.objects.filter(owner=self.owner, name=name).exists():
             raise forms.ValidationError("A token with this name already exists.")
         return name
+
+    def clean_expires_at(self):
+        expires_at = self.cleaned_data["expires_at"]
+        if expires_at is not None and expires_at <= timezone.now():
+            raise forms.ValidationError("Expiry must be in the future.")
+        return expires_at

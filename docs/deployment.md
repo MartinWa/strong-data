@@ -14,11 +14,18 @@ docker pull ghcr.io/martinwa/strong-data:latest
 docker build --target production -t strong-data:local .
 ```
 
+Released images are built for `linux/amd64` only. On ARM hosts, build the image
+locally with `docker build --target production` (or run the amd64 image under
+emulation).
+
 Compose resolves the image and the proxy network from the environment, so both are
 recorded in the private `.env` file. Production configuration is mandatory: the base
-`compose.yaml` requires `.env` and refuses to start without it, so the built-in
-development secret and an unmounted database path can never be used by accident.
-Copy the example environment file and fill in real values before the first start:
+`compose.yaml` requires `.env` and refuses to start without it, and the application
+itself refuses to start when `STRONG_DEBUG` is unset or false unless
+`STRONG_SECRET_KEY` holds a real value. The development fallback and the
+`.env.example` placeholder are both rejected, so a copied example file cannot be
+deployed by accident. Copy the example environment file and fill in real values
+before the first start:
 
 ```sh
 cp .env.example .env
@@ -28,18 +35,22 @@ cp .env.example .env
 | --- | --- |
 | `STRONG_IMAGE` | Image tag or digest to deploy: a released GHCR tag (`ghcr.io/martinwa/strong-data:1.0.0`), `ghcr.io/martinwa/strong-data@sha256:...`, or a locally built tag such as `strong-data:local`. |
 | `PROXY_NETWORK` | Name of the existing private Docker network your TLS reverse proxy is attached to. |
-| `STRONG_SECRET_KEY` | Django secret. Generate a fresh one per installation: `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
+| `STRONG_SECRET_KEY` | Django secret. Required: startup fails if it is missing or still the `.env.example` placeholder. Generate a fresh one per installation: `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
 | `STRONG_DEBUG` | `false` in production. Never leave it enabled on a public instance. |
 | `STRONG_ALLOWED_HOSTS` | Comma-separated public hostnames the proxy forwards, e.g. `workouts.example.com`. |
 | `STRONG_DB_PATH` | SQLite path inside the container; keep the default `/app/data/strong.sqlite3` so it lands on the data volume. |
 | `STRONG_STATIC_ROOT` | Where collected static files live (the image ships them at `/app/staticfiles`). Override only for special setups. |
+| `STRONG_PENDING_DIR` | Where previewed-but-unconfirmed uploads are staged. Defaults to `/tmp/strong-data-pending`, which lands on the container's `/tmp` tmpfs; override only if you mount a dedicated volume. |
 | `STRONG_CSRF_TRUSTED_ORIGINS` | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
+| `STRONG_UPDATE_CHECK` | `true` (default) lets the footer ask GitHub for the latest stable release and show a dot when a newer one exists. The answer is cached for six hours and the request never blocks page rendering. Set `false` for an installation that must make no outbound requests. |
 | `STRONG_PORT` | Listen port inside the container (default `8000`). |
-| `STRONG_TRUSTED_PROXY` | Address allowed to set forwarding headers. Defaults to `*` because the app publishes no ports and is reachable only from the proxy network; set it to the proxy's container address to restrict this. |
+| `STRONG_TRUSTED_PROXY` | Address allowed to set forwarding headers. No default: without it, `X-Forwarded-Proto` is ignored and HTTPS form submissions fail the CSRF origin check. Set it to the proxy's container address, or to `*` when the app is reachable only from the proxy network (the example file ships `*`). |
 
 Waitress trusts `X-Forwarded-Proto` from that address so Django sees `https` and
 HTTPS form submissions pass CSRF origin checks. Set the header on every forwarded
-request. Keep `.env` private: it is gitignored, excluded from the image build
+request. Because the default is empty, a deployment that forgets this variable
+fails closed: the app still serves, but HTTPS form submissions are rejected rather
+than silently trusting a spoofed header. Keep `.env` private: it is gitignored, excluded from the image build
 context, and must never be committed.
 
 ## Start

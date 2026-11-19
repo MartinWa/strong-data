@@ -15,6 +15,12 @@ Configuration is read from the environment: `STRONG_SECRET_KEY`, `STRONG_DEBUG`,
 `STRONG_ALLOWED_HOSTS` and `STRONG_DB_PATH`. See `.env.example`; never commit a real
 `.env`.
 
+With `STRONG_DEBUG` unset the app runs in production mode and refuses to start
+without a real `STRONG_SECRET_KEY`. For local commands either export a key or set
+`STRONG_DEBUG=true` to use the development fallback. The test suite supplies its own
+synthetic key through `tests/settings.py`, so `uv run pytest -q` needs no
+environment.
+
 ## Commands
 
 ```sh

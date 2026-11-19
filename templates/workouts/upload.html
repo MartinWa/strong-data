@@ -1,10 +1,27 @@
 {% extends "base.html" %}
 {% block title %}Upload — strong-data{% endblock %}
 {% block content %}
-<h1>Upload a Strong CSV export</h1>
-<form method="post" enctype="multipart/form-data">
-  {% csrf_token %}
-  {{ form.as_p }}
-  <button type="submit">Preview</button>
-</form>
+<div class="page-head">
+  <h1>Upload a Strong CSV export</h1>
+  <p class="lede">Parse the export and review it before anything is written to your account.</p>
+</div>
+
+<div class="card">
+  <div class="notice notice-warn">
+    <strong>Confirming replaces your data.</strong>
+    An import replaces all sessions, sets and exercises already stored for your account.
+    Muscle-group corrections are kept.
+  </div>
+  {% if too_large %}
+  <div class="msg msg-error">CSV export must be 10 MB or smaller.</div>
+  {% endif %}
+  <form method="post" enctype="multipart/form-data" class="form">
+    {% csrf_token %}
+    {% include "partials/field.html" with field=form.csv_file %}
+    <div class="actions">
+      <button class="btn btn-primary" type="submit">Preview</button>
+      <span class="muted small">Strong export, up to 10 MB.</span>
+    </div>
+  </form>
+</div>
 {% endblock %}

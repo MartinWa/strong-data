@@ -130,7 +130,8 @@ def test_breakdowns(auth):
     ]
 
     exercises = auth.get(BASE + "/breakdown/exercises?limit=1").json()
-    assert exercises["count"] == 1
+    assert exercises["count"] == 5
+    assert len(exercises["items"]) == 1
     assert exercises["items"][0]["key"] == "Bench Press (Barbell)"
 
 

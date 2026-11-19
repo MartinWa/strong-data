@@ -45,7 +45,7 @@ MUSCLE_GUESS = (
             "lateral raise",
             "front raise",
             "arnold press",
-            "rotor cuff",
+            "rotator cuff",
             "shrug",
             "face pull",
             "reverse fly",
@@ -61,8 +61,6 @@ MUSCLE_GUESS = (
             "skullcrusher",
             "pushdown",
             "dip",
-            "stång över huvudet",
-            "stang over huvudet",
         ),
         "Triceps",
     ),
@@ -179,7 +177,7 @@ def parse_int(value: str | None, default: int | None = None) -> int | None:
         number = Decimal(text)
     except InvalidOperation:
         return None
-    if not number.is_finite():
+    if not number.is_finite() or number != number.to_integral_value():
         return None
     return int(number)
 
@@ -287,6 +285,8 @@ def parse_workouts(text: str) -> ParsedWorkouts:
             weight = None
         elif weight is None and raw_weight:
             warnings.append(f"Row {line}: invalid weight; stored as null")
+        if weight == 0:
+            weight = None
         distance = to_decimal(row.get("Distance"))
         if distance is not None and distance < 0:
             warnings.append(f"Row {line}: negative distance; stored as null")
@@ -343,6 +343,8 @@ def parse_workouts(text: str) -> ParsedWorkouts:
                 "total": Decimal(0),
             }
             sessions[key] = session
+        elif session["duration_min"] is None and duration_min is not None:
+            session["duration_min"] = duration_min
         session["total"] += volume
         session["sets"].append(set_row)
         exercises.add(exercise_name)

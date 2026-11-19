@@ -308,3 +308,34 @@ def test_every_set_sort_key_works_in_database(auth, key):
     for sort in (key, f"-{key}"):
         response = auth.get(BASE + f"/sets?sort={sort}")
         assert response.status_code == 200, (sort, response.content[:200])
+
+
+@pytest.mark.django_db
+def test_zero_weight_sets_are_bodyweight_everywhere(client):
+    user = make_token_user(client, "bodyweight", "bodyweight-secret")
+    csv = (
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2026-01-05 09:00:00,Push,30m,Push Up,1,0,20,0,0,\n"
+        "2026-01-05 09:05:00,Push,30m,Bench Press,1,80,5,0,0,\n"
+    )
+    import_workouts_csv(user, csv)
+
+    bodyweight = client.get(BASE + "/records/bodyweight").json()
+    assert [row["exercise"] for row in bodyweight["items"]] == ["Push Up"]
+
+    unweighted = client.get(BASE + "/sets?weighted=false").json()
+    assert [row["exercise"] for row in unweighted["items"]] == ["Push Up"]
+
+    weighted = client.get(BASE + "/sets?weighted=true").json()
+    assert [row["exercise"] for row in weighted["items"]] == ["Bench Press"]
+
+
+@pytest.mark.django_db
+def test_disallowed_host_returns_the_json_error_envelope(client):
+    response = client.get(BASE + "/healthz", HTTP_HOST="not-allowed.example")
+
+    assert response.status_code == 400
+    assert response["Cache-Control"] == "no-store"
+    body = response.json()
+    assert body["contract_version"] == "1.0"
+    assert body["error"]["code"] == "bad_request"
