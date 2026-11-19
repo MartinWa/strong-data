@@ -5,6 +5,8 @@ from .contract import API_PREFIX, MAX_BODY_BYTES, auth_error_response, error_res
 def _django_error_response(response):
     if response.get("Content-Type", "").startswith("application/json"):
         return None
+    if response.status_code == 400:
+        return error_response(400, "bad_request", "Malformed request")
     if response.status_code == 404:
         return error_response(404, "not_found", "Resource not found")
     if response.status_code == 405:

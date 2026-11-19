@@ -1,12 +1,12 @@
 # strong-data
 
 Self-hosted Strong workout CSV import with a private SQLite database, a
-server-rendered HTMX web UI, and a versioned, owner-scoped bearer-token JSON API.
+server-rendered web UI, and a versioned, owner-scoped bearer-token JSON API.
 
 ## Stack
 
 - Python 3.14, Django 5.2 LTS, django-ninja, uv, ruff
-- SQLite only; server-rendered HTMX templates
+- SQLite only; server-rendered Django templates, no CDN and no SPA
 - Non-root container, no published ports (traffic arrives via a TLS reverse proxy)
 
 ## Run with Docker
@@ -51,7 +51,9 @@ Work is delivered in phases, in order:
   the production image, compose files, deployment and backup docs, version/footer links,
   API reference, hardened CI (lockfile, dependency and image auditing) and an attested
   tag-based release pipeline to GHCR.
-- **P4 — Verification**: end-to-end checks on synthetic data and a PII scan.
+- **P4 — Verification** (complete): end-to-end checks on synthetic data, a PII and
+  secret scan, and confirmation that every documented command passes without the
+  private reference export.
 
 Target the current phase and discuss larger changes in an issue first. The detailed
 working plan is private; this summary and the linked docs are the public source of truth.

@@ -2,38 +2,57 @@
 {% block title %}Preview — strong-data{% endblock %}
 {% block content %}
 <h1>Preview import</h1>
-<p>{{ parsed.sessions|length }} sessions, {{ parsed.exercises|length }} exercises.</p>
-{% if parsed.warnings %}
+<p>{{ summary.sessions|length }} sessions, {{ summary.total_sets }} sets, {{ summary.exercises|length }} exercises.</p>
+{% if summary.warnings %}
 <h2>Warnings</h2>
 <ul>
-  {% for warning in parsed.warnings %}<li>{{ warning }}</li>{% endfor %}
+  {% for warning in summary.warnings %}<li>{{ warning }}</li>{% endfor %}
 </ul>
+{% if summary.hidden_warnings %}
+<p>… and {{ summary.hidden_warnings }} more warnings.</p>
 {% endif %}
-{% for session in parsed.sessions %}
-<section>
-  <h2>{{ session.session_date }} — {{ session.workout_name }}</h2>
-  <p>Program {{ session.program }}; {{ session.set_count }} sets; {{ session.total_volume_kg }} kg.</p>
-  <table>
-    <thead>
-      <tr><th>Time</th><th>Exercise</th><th>Order</th><th>Weight</th><th>Reps</th><th>RPE</th><th>Volume</th><th>1RM</th></tr>
-    </thead>
-    <tbody>
-      {% for item in session.sets %}
-      <tr>
-        <td>{{ item.set_time }}</td>
-        <td>{{ item.exercise_name }}</td>
-        <td>{{ item.set_order }}</td>
-        <td>{{ item.weight_kg|default_if_none:"—" }}</td>
-        <td>{{ item.reps }}</td>
-        <td>{{ item.rpe|default_if_none:"—" }}</td>
-        <td>{{ item.volume_kg }}</td>
-        <td>{{ item.est_1rm_kg|default_if_none:"—" }}</td>
-      </tr>
-      {% endfor %}
-    </tbody>
-  </table>
-</section>
-{% endfor %}
+{% endif %}
+<h2>Sessions</h2>
+<table>
+  <thead>
+    <tr><th>Date</th><th>Workout</th><th>Program</th><th>Sets</th><th>Volume (kg)</th><th>Duration (min)</th></tr>
+  </thead>
+  <tbody>
+    {% for session in summary.sessions %}
+    <tr>
+      <td>{{ session.date }}</td>
+      <td>{{ session.workout_name }}</td>
+      <td>{{ session.program }}</td>
+      <td>{{ session.set_count }}</td>
+      <td>{{ session.total_volume_kg }}</td>
+      <td>{{ session.duration_min|default_if_none:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<h2>Sample sets</h2>
+<p>The first {{ summary.sample_sets|length }} of {{ summary.total_sets }} sets. Confirming imports all of them.</p>
+<table>
+  <thead>
+    <tr><th>Time</th><th>Exercise</th><th>Order</th><th>Weight</th><th>Reps</th><th>RPE</th><th>Volume</th><th>1RM</th></tr>
+  </thead>
+  <tbody>
+    {% for item in summary.sample_sets %}
+    <tr>
+      <td>{{ item.set_time }}</td>
+      <td>{{ item.exercise_name }}</td>
+      <td>{{ item.set_order }}</td>
+      <td>{{ item.weight_kg|default_if_none:"—" }}</td>
+      <td>{{ item.reps }}</td>
+      <td>{{ item.rpe|default_if_none:"—" }}</td>
+      <td>{{ item.volume_kg }}</td>
+      <td>{{ item.est_1rm_kg|default_if_none:"—" }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p>Confirming replaces all sessions, sets and exercises currently stored for your
+account. Muscle-group corrections are kept.</p>
 <form method="post">
   {% csrf_token %}
   <input type="hidden" name="import_id" value="{{ import_id }}">

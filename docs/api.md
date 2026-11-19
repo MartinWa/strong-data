@@ -193,9 +193,10 @@ is its exercise's `exercise_meta.muscle_group`, falling back to `Other`.
 
 `GET /breakdown/weekday`, `/breakdown/program`, `/breakdown/muscle`,
 `/breakdown/exercises` (parameters: `start`, `end`, `limit`). Response: envelope,
-`count`, `items` of `{key, sessions, sets, volume_kg}`. Weekday rows are in
-Monday-to-Sunday order; all other breakdowns are sorted by `volume_kg`
-descending then `key` ascending.
+`count`, `items` of `{key, sessions, sets, volume_kg}`. `count` is the number of
+rows before `limit` is applied, so a truncated breakdown is detectable; `items`
+holds at most `limit` rows. Weekday rows are in Monday-to-Sunday order; all other
+breakdowns are sorted by `volume_kg` descending then `key` ascending.
 
 - `weekday`: one row per weekday name, Monday first. Sessions are counted by
   `session_date`'s weekday; `sets` and `volume_kg` come from those sessions.
@@ -268,7 +269,7 @@ rounded to two decimals.
 
 ## Raw
 
-`GET /sessions`: paginated collection. Set records expose
+`GET /sessions`: paginated collection. Session records expose
 `{id, session_date, program, workout_name, start_time, duration_min, set_count,
 total_volume_kg}`. Filters: `start`, `end`, `program`, `exercise`, `muscle`,
 `weighted`, `limit`, `offset`, `sort`. With `weighted=true`, a session qualifies

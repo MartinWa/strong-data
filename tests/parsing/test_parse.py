@@ -60,6 +60,7 @@ def test_parse_rpe(value, expected):
         ("Lat Pulldown (Cable)", "Lats"),
         ("Deadlift (Barbell)", "Lower Back"),
         ("Bicep Curl (Dumbbell)", "Biceps"),
+        ("Rotator Cuff (Cable)", "Shoulders"),
         ("Plank", "Core"),
         ("Mystery Movement", "Other"),
     ],
@@ -75,6 +76,40 @@ def test_program_name_and_estimate_1rm():
     assert estimate_1rm(None, 5) is None
     assert estimate_1rm(Decimal("0"), 5) is None
     assert estimate_1rm(Decimal("80"), 0) is None
+
+
+def test_zero_weight_is_stored_as_bodyweight():
+    text = csv_text("2026-01-05 08:00:00,Push Day,54m,Push Up,1,0,20,0,0,")
+
+    set_row = parse_workouts(text).sessions[0].sets[0]
+
+    assert set_row.weight_kg is None
+    assert set_row.volume_kg == Decimal("0")
+    assert set_row.est_1rm_kg is None
+
+
+def test_fractional_reps_and_set_order_are_rejected():
+    text = csv_text(
+        "2026-01-05 08:00:00,Push Day,54m,Bench Press,1.5,80,5,0,0,",
+        "2026-01-05 08:01:00,Push Day,54m,Bench Press,1,80,5.9,0,0,",
+        "2026-01-05 08:02:00,Push Day,54m,Bench Press,2,80,5,0,0,",
+    )
+
+    result = parse_workouts(text)
+
+    assert result.sessions[0].set_count == 1
+    assert len(result.warnings) == 2
+    assert "invalid set order" in result.warnings[0]
+    assert "invalid reps" in result.warnings[1]
+
+
+def test_duration_is_filled_from_a_later_row():
+    text = csv_text(
+        "2026-01-05 08:00:00,Push Day,,Bench Press,1,80,5,0,0,",
+        "2026-01-05 08:05:00,Push Day,54m,Chest Fly,1,,,0,0,",
+    )
+
+    assert parse_workouts(text).sessions[0].duration_min == 54
 
 
 def test_parse_workouts_builds_sessions_and_derived_fields():

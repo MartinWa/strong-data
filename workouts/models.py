@@ -126,7 +126,7 @@ class ApiToken(models.Model):
     )
     name = models.CharField(max_length=255)
     key_hash = models.CharField(max_length=64, unique=True)
-    prefix = models.CharField(max_length=16)
+    prefix = models.CharField(max_length=16, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True)
     expires_at = models.DateTimeField(null=True, blank=True)
     revoked_at = models.DateTimeField(null=True, blank=True)

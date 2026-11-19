@@ -2,6 +2,9 @@
 {% block title %}Upload — strong-data{% endblock %}
 {% block content %}
 <h1>Upload a Strong CSV export</h1>
+<p>Confirming an import replaces all sessions, sets and exercises already stored for
+your account. Muscle-group corrections are kept.</p>
+{% if too_large %}<p>CSV export must be 10 MB or smaller.</p>{% endif %}
 <form method="post" enctype="multipart/form-data">
   {% csrf_token %}
   {{ form.as_p }}

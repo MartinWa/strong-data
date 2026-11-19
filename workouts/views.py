@@ -1,9 +1,11 @@
 import hashlib
 import hmac
 import secrets
+import time
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
+from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.shortcuts import redirect, render
 from django.utils import timezone
@@ -11,17 +13,39 @@ from django.views.decorators.http import require_POST
 
 from parsing import InvalidCSVError, parse_workouts
 
-from .forms import MuscleGroupForm, TokenForm, UploadForm
+from . import pending
+from .forms import MUSCLE_CHOICES, MuscleGroupForm, TokenForm, UploadForm
 from .models import ApiToken, ExerciseMeta, WorkoutSession
 from .services import EmptyImportError, import_workouts_csv
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-PENDING_IMPORT_KEY = "pending_import_csv"
+MULTIPART_OVERHEAD_BYTES = 1024 * 1024
+PENDING_IMPORT_KEY = "pending_import"
+HISTORY_PAGE_SIZE = 25
+
+
+def _discard_pending(request, import_id):
+    pending.discard(import_id)
+    request.session.pop(PENDING_IMPORT_KEY, None)
+
+
+def _expired(request, import_id):
+    _discard_pending(request, import_id)
+    messages.error(request, "This preview expired. Upload the CSV again.")
+    return redirect("upload")
 
 
 @login_required
 def upload(request):
     if request.method == "POST":
+        content_length = request.META.get("CONTENT_LENGTH", "")
+        size = int(content_length) if content_length.isdigit() else 0
+        if size > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES:
+            return render(
+                request,
+                "workouts/upload.html",
+                {"form": UploadForm(), "too_large": True},
+            )
         form = UploadForm(request.POST, request.FILES)
         if form.is_valid():
             upload_file = form.cleaned_data["csv_file"]
@@ -37,12 +61,22 @@ def upload(request):
                     if not parsed.sessions:
                         form.add_error("csv_file", "CSV export contains no importable rows")
                     else:
-                        request.session[PENDING_IMPORT_KEY] = {
-                            "id": secrets.token_urlsafe(16),
-                            "fingerprint": hashlib.sha256(raw.encode()).hexdigest(),
-                            "csv": raw,
-                        }
-                        return redirect("preview")
+                        previous = request.session.get(PENDING_IMPORT_KEY)
+                        if previous:
+                            pending.discard(previous["id"])
+                        pending.purge_stale()
+                        import_id = secrets.token_urlsafe(16)
+                        try:
+                            pending.save(import_id, raw, parsed)
+                        except OSError:
+                            form.add_error("csv_file", "The upload could not be stored. Try again.")
+                        else:
+                            request.session[PENDING_IMPORT_KEY] = {
+                                "id": import_id,
+                                "fingerprint": hashlib.sha256(raw.encode()).hexdigest(),
+                                "created_at": time.time(),
+                            }
+                            return redirect("preview")
     else:
         form = UploadForm()
     return render(request, "workouts/upload.html", {"form": form})
@@ -50,25 +84,33 @@ def upload(request):
 
 @login_required
 def preview(request):
-    pending = request.session.get(PENDING_IMPORT_KEY)
-    if not pending:
+    stored = request.session.get(PENDING_IMPORT_KEY)
+    if not stored:
         return redirect("upload")
-    parsed = parse_workouts(pending["csv"])
+    import_id = stored["id"]
+    if time.time() - stored.get("created_at", 0) > pending.PENDING_TTL_SECONDS:
+        return _expired(request, import_id)
+    summary = pending.load_summary(import_id)
+    if summary is None:
+        return _expired(request, import_id)
     if request.method == "POST":
         posted_id = request.POST.get("import_id", "")
         posted_fingerprint = request.POST.get("fingerprint", "")
         if not hmac.compare_digest(
-            posted_id.encode(), pending["id"].encode()
-        ) or not hmac.compare_digest(posted_fingerprint.encode(), pending["fingerprint"].encode()):
+            posted_id.encode(), import_id.encode()
+        ) or not hmac.compare_digest(posted_fingerprint.encode(), stored["fingerprint"].encode()):
             messages.error(request, "This preview is stale. Upload the CSV again.")
             return redirect("upload")
+        raw = pending.load_csv(import_id)
+        if raw is None:
+            return _expired(request, import_id)
         try:
-            result = import_workouts_csv(request.user, pending["csv"])
-        except EmptyImportError as exc:
+            result = import_workouts_csv(request.user, raw)
+        except (EmptyImportError, InvalidCSVError) as exc:
             messages.error(request, str(exc))
-            request.session.pop(PENDING_IMPORT_KEY, None)
+            _discard_pending(request, import_id)
             return redirect("upload")
-        request.session.pop(PENDING_IMPORT_KEY, None)
+        _discard_pending(request, import_id)
         messages.success(
             request,
             f"Imported {result.sessions} sessions and {result.sets} sets.",
@@ -78,9 +120,9 @@ def preview(request):
         request,
         "workouts/preview.html",
         {
-            "parsed": parsed,
-            "import_id": pending["id"],
-            "fingerprint": pending["fingerprint"],
+            "summary": summary,
+            "import_id": import_id,
+            "fingerprint": stored["fingerprint"],
         },
     )
 
@@ -88,7 +130,8 @@ def preview(request):
 @login_required
 def history(request):
     sessions = WorkoutSession.objects.filter(owner=request.user).prefetch_related("sets__exercise")
-    return render(request, "workouts/history.html", {"sessions": sessions})
+    page = Paginator(sessions, HISTORY_PAGE_SIZE).get_page(request.GET.get("page"))
+    return render(request, "workouts/history.html", {"page": page})
 
 
 @login_required
@@ -108,7 +151,7 @@ def corrections(request):
     return render(
         request,
         "workouts/corrections.html",
-        {"metas": metas, "form": form},
+        {"metas": metas, "form": form, "muscle_choices": MUSCLE_CHOICES},
     )
 
 
@@ -127,6 +170,7 @@ def tokens(request):
                         name=form.cleaned_data["name"],
                         key_hash=hashlib.sha256(secret.encode()).hexdigest(),
                         prefix=secret[:8],
+                        expires_at=form.cleaned_data["expires_at"],
                     )
             except IntegrityError:
                 secret = None

@@ -24,14 +24,11 @@ _STATUS_CODES = {
     413: ("payload_too_large", "Request body too large"),
     415: ("unsupported_media_type", "Unsupported media type"),
     422: ("validation_error", "Validation failed"),
-    429: ("throttled", "Too many requests"),
     500: ("internal_error", "Internal server error"),
     503: ("service_unavailable", "Service temporarily unavailable"),
 }
 
-_DOCUMENTED_ERRORS = {
-    status: message for status, (_, message) in _STATUS_CODES.items() if status != 429
-}
+_DOCUMENTED_ERRORS = {status: message for status, (_, message) in _STATUS_CODES.items()}
 
 
 def _document_error_responses(schema):

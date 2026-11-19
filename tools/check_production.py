@@ -89,9 +89,26 @@ def verify_serving(database):
     assert migrated > 0, migrated
 
 
+def verify_refuses_unsafe_secret():
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"STRONG_SECRET_KEY", "STRONG_DEBUG"}
+    }
+    result = subprocess.run(
+        [sys.executable, "-c", "import strong_data.settings"],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0, "The production image started without a secret key."
+    assert b"STRONG_SECRET_KEY" in result.stderr, result.stderr
+
+
 def main():
     verify_running_as_non_root()
     verify_dev_tooling_absent()
+    verify_refuses_unsafe_secret()
     version = verify_version()
     data = Path(tempfile.mkdtemp(prefix="strong-data-production-check-"))
     verify_serving(data / "strong.sqlite3")

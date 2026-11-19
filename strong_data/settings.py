@@ -3,10 +3,28 @@
 import os
 from pathlib import Path
 
+from django.core.exceptions import ImproperlyConfigured
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-SECRET_KEY = os.environ.get("STRONG_SECRET_KEY") or "django-insecure-local-development-only"
 DEBUG = os.environ.get("STRONG_DEBUG", "false").strip().lower() in {"1", "true", "yes"}
+
+DEVELOPMENT_SECRET_KEY = "django-insecure-local-development-only"
+PLACEHOLDER_SECRET_KEYS = frozenset({DEVELOPMENT_SECRET_KEY, "replace-with-a-long-random-value"})
+
+
+def secret_key(debug: bool) -> str:
+    value = os.environ.get("STRONG_SECRET_KEY", "").strip()
+    if value and value not in PLACEHOLDER_SECRET_KEYS:
+        return value
+    if debug:
+        return DEVELOPMENT_SECRET_KEY
+    raise ImproperlyConfigured(
+        "STRONG_SECRET_KEY must be set to a unique random value when STRONG_DEBUG is false."
+    )
+
+
+SECRET_KEY = secret_key(DEBUG)
 ALLOWED_HOSTS = [
     host.strip()
     for host in os.environ.get("STRONG_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")

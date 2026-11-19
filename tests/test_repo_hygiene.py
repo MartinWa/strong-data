@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from tools.check_no_private_data import find_violations
+from tools.check_no_private_data import candidate_files, content_violations, find_violations
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -91,3 +91,35 @@ def test_recovery_chown_commands_grant_only_ownership():
         text = (REPO_ROOT / document).read_text(encoding="utf-8")
 
         assert "--user 0:0 --cap-add CHOWN web chown" in text
+
+
+def test_content_scan_flags_private_content(tmp_path):
+    sample = tmp_path / "notes.md"
+    email = "real.person" + "@" + "corp.example"
+    access_key = "AKIA" + "IOSFODNN7EXAMPLE"
+    host_path = "C:" + "\\Users\\someone\\export.csv"
+    sample.write_text(f"contact {email}\nkey {access_key}\npath {host_path}\n", encoding="utf-8")
+
+    findings = content_violations([str(sample)])
+
+    assert findings == [
+        f"{sample}:1: email address",
+        f"{sample}:2: AWS access key",
+        f"{sample}:3: absolute host path",
+    ]
+
+
+def test_content_scan_allows_synthetic_examples(tmp_path):
+    sample = tmp_path / "notes.md"
+    sample.write_text(
+        "user@example.com\n"
+        "https://workouts.example.com/api/v1/healthz\n"
+        "editor-home:/home/developer\n",
+        encoding="utf-8",
+    )
+
+    assert content_violations([str(sample)]) == []
+
+
+def test_repository_content_is_clean():
+    assert content_violations(candidate_files()) == []

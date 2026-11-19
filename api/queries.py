@@ -347,7 +347,7 @@ def breakdown_data(user, dimension, start, end, limit):
         {"key": key, "sessions": sessions, "sets": sets, "volume_kg": round2(volume)}
         for key, sessions, sets, volume in rows[:limit]
     ]
-    return {"count": len(items), "items": items}
+    return {"count": len(rows), "items": items}
 
 
 def progress_data(user, name, start, end):
@@ -618,11 +618,3 @@ def public_session(record):
         "set_count": record["set_count"],
         "total_volume_kg": record["total_volume_kg"],
     }
-
-
-def sort_records(records, key, descending, tiebreaker="id"):
-    def sort_value(value):
-        return float("-inf") if value is None else value
-
-    ordered = sorted(records, key=lambda record: record[tiebreaker])
-    return sorted(ordered, key=lambda record: sort_value(record[key]), reverse=descending)
