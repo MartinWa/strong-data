@@ -122,6 +122,23 @@ def test_openapi_requires_token(auth):
         assert expected in paths
 
 
+def test_openapi_documents_sort_keys(auth):
+    paths = auth.get(BASE + "/openapi.json").json()["paths"]
+    sessions = paths["/api/v1/sessions"]["get"]["parameters"]
+    sets = paths["/api/v1/sets"]["get"]["parameters"]
+
+    session_sort = next(item for item in sessions if item["name"] == "sort")
+    assert (
+        "Allowed keys: date, program, sets, start_time, volume, workout_name"
+        in (session_sort["description"])
+    )
+    assert "Default: date" in session_sort["description"]
+
+    set_sort = next(item for item in sets if item["name"] == "sort")
+    assert "Default: set_time" in set_sort["description"]
+    assert "est_1rm" in set_sort["description"]
+
+
 def test_method_body_and_media_type_guards(auth):
     anonymous = Client()
     assert_error(auth.post(BASE + "/summary"), 405, "method_not_allowed")

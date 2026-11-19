@@ -122,6 +122,18 @@ def validate_pagination(limit, offset):
         raise ApiError(422, "validation_error", "offset must be non-negative")
 
 
+def sort_query(keys, default):
+    allowed = ", ".join(sorted(keys))
+    return StrictQuery(
+        None,
+        description=(
+            "Sort key, optionally prefixed with '-' for descending order. "
+            f"Allowed keys: {allowed}. Default: {default}. "
+            "Ties are always broken by id ascending."
+        ),
+    )
+
+
 def parse_sort(value, allowed, default):
     if value is None:
         return default, False

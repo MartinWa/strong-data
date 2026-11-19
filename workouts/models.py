@@ -1,5 +1,6 @@
 from django.conf import settings
 from django.db import models
+from django.utils import timezone
 
 
 class Exercise(models.Model):
@@ -136,6 +137,14 @@ class ApiToken(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["owner", "name"], name="uniq_token_owner_name")
         ]
+
+    @property
+    def is_expired(self):
+        return self.expires_at is not None and self.expires_at <= timezone.now()
+
+    @property
+    def is_active(self):
+        return self.revoked_at is None and not self.is_expired
 
     def __str__(self):
         return self.name

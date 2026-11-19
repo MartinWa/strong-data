@@ -19,7 +19,7 @@
             <svg class="icon" data-icon-revealed width="20" height="20" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/><path d="M3 3l18 18"/></svg>
           </button>
         </div>
-        {% for error in form.password.errors %}<p class="error">{{ error }}</p>{% endfor %}
+        {% if form.password.errors %}<div id="{{ form.password.auto_id }}_error">{% for error in form.password.errors %}<p class="error">{{ error }}</p>{% endfor %}</div>{% endif %}
       </div>
       <label class="checkbox" for="{{ form.remember_me.id_for_label }}">
         {{ form.remember_me }}
@@ -50,14 +50,23 @@ document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
   ['pointerup', 'pointercancel', 'pointerleave'].forEach(function (name) {
     button.addEventListener(name, hide);
   });
+  var keyboardPress = false;
   button.addEventListener('keydown', function (event) {
     if (event.key === ' ' || event.key === 'Enter') {
       event.preventDefault();
+      keyboardPress = true;
       reveal(true);
     }
   });
   button.addEventListener('keyup', function (event) {
     if (event.key === ' ' || event.key === 'Enter') hide();
+  });
+  button.addEventListener('click', function (event) {
+    if (event.detail !== 0 || keyboardPress) {
+      keyboardPress = false;
+      return;
+    }
+    reveal(button.getAttribute('aria-pressed') !== 'true');
   });
   button.addEventListener('blur', hide);
   window.addEventListener('blur', hide);

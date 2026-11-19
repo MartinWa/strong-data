@@ -3,6 +3,7 @@ import hashlib
 import os
 import re
 import time
+from datetime import timedelta
 
 import pytest
 from django.contrib.auth import get_user_model
@@ -10,6 +11,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
+from django.utils import timezone
 
 from strong_data.version import app_version
 from workouts.models import ApiToken, ExerciseMeta, WorkoutSession
@@ -339,6 +341,11 @@ def test_history_paginates_sessions(client):
     assert first.context["page"].paginator.num_pages == 2
     assert len(first.context["page"].object_list) == 25
     assert len(second.context["page"].object_list) == 5
+    assert (
+        first.context["page"].object_list[0].session_date
+        > second.context["page"].object_list[0].session_date
+    )
+    assert b'href="?page=2">Older</a>' in first.content
 
 
 @pytest.mark.django_db
@@ -387,6 +394,45 @@ def test_oversized_upload_is_rejected_before_the_file_is_read(client):
 
     assert response.status_code == 200
     assert b"CSV export must be 10 MB or smaller." in response.content
+
+
+@pytest.mark.django_db
+def test_token_list_marks_an_expired_token(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    ApiToken.objects.create(
+        owner=user,
+        name="stale",
+        key_hash=hashlib.sha256(b"stale-secret").hexdigest(),
+        prefix="stale-se",
+        expires_at=timezone.now() - timedelta(minutes=1),
+    )
+
+    content = client.get(reverse("tokens")).content.decode()
+
+    assert ">expired</span>" in content
+    assert "badge-success" not in content
+
+
+@pytest.mark.django_db
+def test_field_hints_and_errors_are_referenced_by_the_input(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    content = client.get(reverse("tokens")).content.decode()
+
+    assert 'aria-describedby="id_expires_at_helptext"' in content
+    assert 'id="id_expires_at_helptext"' in content
+
+
+@pytest.mark.django_db
+def test_login_errors_are_referenced_by_the_password_field(client):
+    get_user_model().objects.create_user(username="alice", password="synthetic-password-1")
+
+    content = client.post(reverse("login"), {"username": "alice", "password": ""}).content.decode()
+
+    assert 'aria-describedby="id_password_error"' in content
+    assert 'id="id_password_error"' in content
 
 
 @pytest.mark.django_db

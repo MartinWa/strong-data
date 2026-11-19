@@ -131,7 +131,11 @@ def preview(request):
 @login_required
 def history(request):
     pending.purge_stale()
-    sessions = WorkoutSession.objects.filter(owner=request.user).prefetch_related("sets__exercise")
+    sessions = (
+        WorkoutSession.objects.filter(owner=request.user)
+        .order_by("-session_date", "-id")
+        .prefetch_related("sets__exercise")
+    )
     page = Paginator(sessions, HISTORY_PAGE_SIZE).get_page(request.GET.get("page"))
     return render(request, "workouts/history.html", {"page": page})
 

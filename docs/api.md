@@ -96,9 +96,11 @@ values are JSON numbers and missing values are JSON `null` (never `0`).
 
 Paginated responses carry `items`, the complete filtered `count`,
 `next`/`previous` continuation paths (relative URLs that preserve all other query
-parameters) and `has_more`. The default `limit` is 50. `sort` accepts a documented
-key, optionally prefixed with `-` for descending order, and always appends `id`
-ascending as a unique tiebreaker.
+parameters) and `has_more`. The default `limit` is 50. `sort` takes one of the keys
+that operation lists in the schema, optionally prefixed with `-` for descending
+order, and always appends `id` ascending as a unique tiebreaker. Each operation's
+schema entry names the allowed keys and the effective default; query the Swagger
+UI at `/api/v1/docs` to see them without a client.
 
 ## Summary
 

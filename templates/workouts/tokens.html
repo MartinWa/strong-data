@@ -47,6 +47,8 @@
           <td>
             {% if token.revoked_at %}
             <span class="badge badge-danger">revoked</span>
+            {% elif token.is_expired %}
+            <span class="badge">expired</span>
             {% else %}
             <span class="badge badge-success">active</span>
             {% endif %}
