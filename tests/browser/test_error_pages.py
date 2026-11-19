@@ -1,7 +1,13 @@
+from unittest import mock
+
 import pytest
 from django.contrib.auth import get_user_model
+from django.db import OperationalError
 from django.test import Client
 from django.urls import reverse
+
+from strong_data.version import app_version
+from strong_data.views import server_error
 
 
 @pytest.mark.django_db
@@ -55,3 +61,29 @@ def test_api_is_reachable_from_the_footer_but_not_the_nav(client):
     nav = content.split('class="site-nav"')[1].split("</nav>")[0]
     assert "/api/v1/docs" not in nav
     assert "API reference" in content
+
+
+def test_500_handler_does_not_evaluate_authentication(rf):
+    with mock.patch(
+        "django.contrib.auth.context_processors.auth",
+        side_effect=OperationalError("session store unavailable"),
+    ):
+        response = server_error(rf.get("/boom/"))
+
+    assert response.status_code == 500
+    assert b"Something went wrong" in response.content
+    assert app_version().encode() in response.content
+
+
+def test_500_does_not_claim_that_nothing_was_written(rf):
+    content = server_error(rf.get("/boom/")).content.decode()
+
+    assert "Your data is unchanged" not in content
+
+
+@pytest.mark.django_db
+def test_500_renders_its_branding_without_a_request_context(rf):
+    content = server_error(rf.get("/boom/")).content.decode()
+
+    assert "strong-data" in content
+    assert "GitHub" in content

@@ -92,7 +92,7 @@
       {% for group in session.sets_by_exercise %}
       <tbody>
         <tr class="set-group">
-          <th scope="colgroup" colspan="6">
+          <th scope="rowgroup" colspan="6">
             {{ group.exercise.name }}
             <span class="set-group-count">{{ group.sets|length }} set{{ group.sets|length|pluralize }}</span>
           </th>
@@ -119,13 +119,13 @@
   {% if page.has_previous %}
   <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}">Previous</a>
   {% else %}
-  <a class="btn btn-sm" href="{% querystring page=1 %}" aria-disabled="true">Previous</a>
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Previous</a>
   {% endif %}
   <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
   {% if page.has_next %}
   <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}">Next</a>
   {% else %}
-  <a class="btn btn-sm" href="{% querystring page=page.paginator.num_pages %}" aria-disabled="true">Next</a>
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Next</a>
   {% endif %}
 </nav>
 {% endif %}

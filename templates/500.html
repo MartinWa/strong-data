@@ -8,7 +8,7 @@
 
 <div class="empty">
   {% if user.is_authenticated %}
-  <p>Your data is unchanged. Try again, or start from your sessions.</p>
+  <p>Try again, or start from your sessions.</p>
   <a class="btn btn-primary" href="{% url 'sessions' %}">Go to sessions</a>
   {% else %}
   <p>Try again, or log in to continue.</p>

@@ -60,7 +60,7 @@ def test_grouped_table_has_a_caption_and_column_scopes(client):
 
     content = client.get(reverse("sessions")).content.decode()
 
-    assert 'scope="colgroup"' in content
+    assert 'scope="rowgroup"' in content
     assert 'class="visually-hidden">Axlar on 2026-01-05: 4 sets</caption>' in content
 
 
@@ -189,3 +189,21 @@ def test_delete_link_ignores_active_filters_when_reporting_the_total(client):
     content = client.get(reverse("sessions"), {"q": "nothing-matches"}).content.decode()
 
     assert "Removes all 1 session" in content
+
+
+@pytest.mark.django_db
+def test_disabled_pager_link_has_no_target_to_activate(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    rows = "\n".join(
+        f"2026-01-{day:02d} 09:00:00,Push Day,54m,Bench Press,1,80,5,0,0,8" for day in range(1, 27)
+    )
+    import_workouts_csv(user, HEADER + rows + "\n")
+    client.force_login(user)
+
+    content = client.get(reverse("sessions")).content.decode()
+
+    pager = content.split('class="pager"')[1].split("</nav>")[0]
+    disabled = [segment for segment in pager.split("<a ")[1:] if 'aria-disabled="true"' in segment]
+    assert len(disabled) == 1
+    assert "href=" not in disabled[0]
+    assert 'tabindex="0"' in disabled[0]

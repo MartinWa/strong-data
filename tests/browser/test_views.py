@@ -518,7 +518,7 @@ def test_sessions_paginates_sessions(client):
         > second.context["page"].object_list[0].session_date
     )
     assert b'href="?page=2">Next</a>' in first.content
-    assert b'aria-disabled="true">Previous</a>' in first.content
+    assert b'aria-disabled="true" tabindex="0">Previous</a>' in first.content
     assert "Sessions" in first.content.decode()
     assert "Import history" not in first.content.decode()
 
