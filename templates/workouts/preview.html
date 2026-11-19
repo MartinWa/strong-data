@@ -98,9 +98,9 @@
 <div class="card">
   <div class="card-head">
     <h2>Sample sets</h2>
-    <span class="badge">{{ summary.sample_sets|length }} of {{ summary.total_sets }}</span>
+    <span class="badge">{{ summary.sample_set_count }} of {{ summary.total_sets }}</span>
   </div>
-  <p class="muted small">The first {{ summary.sample_sets|length }} of {{ summary.total_sets }} sets, newest session first. Confirming imports all of them.</p>
+  <p class="muted small">The first {{ summary.sample_set_count }} of {{ summary.total_sets }} sets, newest session first. Confirming imports all of them.</p>
   <div class="table-wrap">
     <table class="table">
       <caption class="visually-hidden">Sample sets in this export</caption>
@@ -116,8 +116,12 @@
           <th scope="col" class="num secondary">1RM (kg)</th>
         </tr>
       </thead>
+      {% for group in summary.sample_sessions %}
       <tbody>
-        {% for item in summary.sample_sets %}
+        <tr class="sample-group">
+          <th scope="rowgroup" colspan="8">{{ group.date|isodate }} <span class="sample-group-workout">{{ group.workout_name }}</span></th>
+        </tr>
+        {% for item in group.sets %}
         <tr>
           <td class="muted nowrap secondary">{{ item.set_time|isominute }}</td>
           <td>{{ item.exercise_name }}</td>
@@ -130,6 +134,7 @@
         </tr>
         {% endfor %}
       </tbody>
+      {% endfor %}
     </table>
   </div>
 </div>

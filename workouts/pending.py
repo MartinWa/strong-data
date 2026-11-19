@@ -131,12 +131,16 @@ def summarize(parsed: ParsedWorkouts) -> dict:
         }
         for session in ordered_sessions
     ]
-    sample_sets = []
+    sample_sessions = []
+    sample_set_count = 0
     for session in ordered_sessions:
+        if sample_set_count >= SAMPLE_SET_LIMIT:
+            break
+        sets = []
         for item in session.sets:
-            if len(sample_sets) >= SAMPLE_SET_LIMIT:
+            if sample_set_count >= SAMPLE_SET_LIMIT:
                 break
-            sample_sets.append(
+            sets.append(
                 {
                     "set_time": item.set_time.isoformat(sep=" "),
                     "exercise_name": item.exercise_name,
@@ -150,14 +154,22 @@ def summarize(parsed: ParsedWorkouts) -> dict:
                     ),
                 }
             )
-        if len(sample_sets) >= SAMPLE_SET_LIMIT:
-            break
+            sample_set_count += 1
+        if sets:
+            sample_sessions.append(
+                {
+                    "date": session.session_date.isoformat(),
+                    "workout_name": session.workout_name,
+                    "sets": sets,
+                }
+            )
     warnings = list(parsed.warnings)
     return {
         "sessions": sessions,
         "exercises": list(parsed.exercises),
         "warning_total": len(warnings),
         "warning_groups": group_warnings(warnings),
-        "sample_sets": sample_sets,
+        "sample_sessions": sample_sessions,
+        "sample_set_count": sample_set_count,
         "total_sets": sum(session.set_count for session in parsed.sessions),
     }

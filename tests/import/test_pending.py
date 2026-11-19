@@ -36,7 +36,7 @@ def test_save_round_trips_the_csv_and_summary(pending_root):
     assert pending.load_csv(IMPORT_ID) == SAMPLE
     assert summary["total_sets"] == 2
     assert summary["sessions"][0]["workout_name"] == "Push Day"
-    assert summary["sample_sets"][0]["exercise_name"] == "Bench Press (Barbell)"
+    assert summary["sample_sessions"][0]["sets"][0]["exercise_name"] == "Bench Press (Barbell)"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
@@ -117,10 +117,28 @@ def test_summarize_caps_the_sample_and_reports_the_total():
 
     summary = pending.summarize(parse_workouts(csv_text(*rows)))
 
-    assert len(summary["sample_sets"]) == pending.SAMPLE_SET_LIMIT
+    assert summary["sample_set_count"] == pending.SAMPLE_SET_LIMIT
     assert summary["total_sets"] == 30
     assert summary["warning_total"] == 0
     assert summary["warning_groups"] == []
+
+
+def test_summarize_caps_the_sample_across_sessions_and_keeps_the_partial_group():
+    rows = []
+    for day, name in (("05", "Push Day"), ("06", "Pull Day")):
+        for minute in range(15):
+            rows.append(
+                f"2026-02-{day} 09:{minute:02d}:00,{name},54m,Exercise {minute:02d},1,80,5,0,0,8"
+            )
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert summary["sample_set_count"] == pending.SAMPLE_SET_LIMIT
+    assert [len(group["sets"]) for group in summary["sample_sessions"]] == [15, 5]
+    assert [group["date"] for group in summary["sample_sessions"]] == [
+        "2026-02-06",
+        "2026-02-05",
+    ]
 
 
 def test_summarize_orders_sessions_newest_first_like_the_sessions_page():
@@ -141,7 +159,14 @@ def test_summarize_orders_sessions_newest_first_like_the_sessions_page():
         "Push Day",
         "Legs Day",
     ]
-    assert summary["sample_sets"][0]["exercise_name"] == "Barbell Row"
+    assert [group["workout_name"] for group in summary["sample_sessions"]] == [
+        "Pull Day",
+        "Push Day",
+        "Legs Day",
+    ]
+    assert summary["sample_sessions"][0]["sets"][0]["exercise_name"] == "Barbell Row"
+    assert summary["sample_sessions"][0]["date"] == "2026-02-10"
+    assert summary["sample_set_count"] == 3
 
 
 def test_summarize_groups_warnings_by_cause_with_counts():

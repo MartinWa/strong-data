@@ -1006,7 +1006,8 @@ input[type="file"]::file-selector-button:hover {
   padding-bottom: 0.25rem;
 }
 
-.set-group th {
+.set-group th,
+.sample-group th {
   border-top: 1px solid var(--border);
   background: transparent;
   color: var(--text);
@@ -1015,6 +1016,17 @@ input[type="file"]::file-selector-button:hover {
   letter-spacing: 0;
   text-transform: none;
   white-space: normal;
+}
+
+.table tbody:first-of-type .sample-group th {
+  border-top: 0;
+}
+
+.sample-group-workout {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
 }
 
 .table tbody:first-of-type .set-group th {
