@@ -108,7 +108,7 @@ STATIC_ROOT = Path(os.environ.get("STRONG_STATIC_ROOT") or BASE_DIR / "staticfil
 STATIC_ROOT.mkdir(exist_ok=True)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
-LOGIN_REDIRECT_URL = "history"
+LOGIN_REDIRECT_URL = "sessions"
 
 UPDATE_CHECK_ENABLED = os.environ.get("STRONG_UPDATE_CHECK", "true").strip().lower() in {
     "1",

@@ -18,14 +18,14 @@ sees only their own imports, corrections and tokens.
    program, set count, volume, duration), the first 20 sets as a sample, and any
    warnings, then press *Confirm import*. The summary covers every session; only
    the set table is sampled, and confirming imports all sets.
-3. **History** (`/history/`) — the imported sessions and their sets, 25 sessions
-   per page.
+3. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 sessions
+   per page. Each row expands to show its sets.
 
 The preview is tied to the file you uploaded: if you upload again, the old
 preview is discarded and you must confirm the new one. A pending preview expires
 after one hour. The uploaded file is never stored in your session; it is deleted
 when you confirm or discard the preview, and expired files are swept whenever you
-next upload or open the preview or history pages.
+next upload or open the preview or sessions pages.
 
 ### Confirming replaces your existing data
 
@@ -67,11 +67,27 @@ A `Weight` of `0` is treated as bodyweight, exactly like an empty `Weight`: the
 set is stored with no weight, contributes no volume and appears in bodyweight
 records.
 
-## History
+## Sessions
 
-`/history/` lists your sessions in date order with their sets, weight, reps and
-volume. It shows what is currently stored, so after a replacement import it
-shows only the new export.
+`/sessions/` lists your sessions newest first. Each row is collapsed to the date,
+workout name, program and totals; open it to see the sets with weight, reps, RPE,
+volume and estimated 1RM. It shows what is currently stored, so after a
+replacement import it shows only the new export.
+
+Three filters narrow the list: a free-text search matching the workout name or an
+exercise name, a program dropdown, and an optional date range. Filters combine,
+apply to whole sessions (a matched session still shows all of its sets), and are
+kept when you page. Changing any control applies the filters immediately — the
+search waits for a short typing pause and pauses while an input method (IME) is
+composing, so Japanese, Chinese or Korean input is never interrupted — and
+*Clear* removes all of them. The *Filter* button is only needed when JavaScript
+is unavailable.
+
+Search is a case-insensitive substring match on the stored names; it does not
+fold scripts, so a hiragana query does not find a katakana exercise name.
+
+`/history/` permanently redirects to `/sessions/`, keeping any query string, so
+an old `/history/?page=2` bookmark still lands on the same page.
 
 ## Muscle groups
 

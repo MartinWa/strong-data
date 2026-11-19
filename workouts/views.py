@@ -2,11 +2,13 @@ import hashlib
 import hmac
 import secrets
 import time
+from datetime import date
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
+from django.db.models import Q
 from django.shortcuts import redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -21,7 +23,7 @@ from .services import EmptyImportError, import_workouts_csv
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 PENDING_IMPORT_KEY = "pending_import"
-HISTORY_PAGE_SIZE = 25
+SESSIONS_PAGE_SIZE = 25
 
 
 def _discard_pending(request, import_id):
@@ -33,6 +35,15 @@ def _expired(request, import_id):
     _discard_pending(request, import_id)
     messages.error(request, "This preview expired. Upload the CSV again.")
     return redirect("upload")
+
+
+def _optional_date(value):
+    if not value:
+        return None
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        return None
 
 
 @login_required
@@ -116,7 +127,7 @@ def preview(request):
             request,
             f"Imported {result.sessions} sessions and {result.sets} sets.",
         )
-        return redirect("history")
+        return redirect("sessions")
     return render(
         request,
         "workouts/preview.html",
@@ -129,15 +140,44 @@ def preview(request):
 
 
 @login_required
-def history(request):
+def sessions(request):
     pending.purge_stale()
-    sessions = (
-        WorkoutSession.objects.filter(owner=request.user)
-        .order_by("-session_date", "-id")
-        .prefetch_related("sets__exercise")
+    owned = WorkoutSession.objects.filter(owner=request.user)
+    has_data = owned.exists()
+    program = request.GET.get("program", "").strip()
+    query = request.GET.get("q", "").strip()
+    date_from = _optional_date(request.GET.get("from", ""))
+    date_to = _optional_date(request.GET.get("to", ""))
+    filtered = bool(program or query or date_from or date_to)
+
+    selected = owned
+    if program:
+        selected = selected.filter(program=program)
+    if date_from:
+        selected = selected.filter(session_date__gte=date_from)
+    if date_to:
+        selected = selected.filter(session_date__lte=date_to)
+    if query:
+        selected = selected.filter(
+            Q(workout_name__icontains=query) | Q(sets__exercise__name__icontains=query)
+        ).distinct()
+
+    selected = selected.order_by("-session_date", "-id").prefetch_related("sets__exercise")
+    page = Paginator(selected, SESSIONS_PAGE_SIZE).get_page(request.GET.get("page"))
+    return render(
+        request,
+        "workouts/sessions.html",
+        {
+            "page": page,
+            "has_data": has_data,
+            "filtered": filtered,
+            "programs": owned.values_list("program", flat=True).distinct().order_by("program"),
+            "selected_program": program,
+            "query": query,
+            "date_from": date_from.isoformat() if date_from else "",
+            "date_to": date_to.isoformat() if date_to else "",
+        },
     )
-    page = Paginator(sessions, HISTORY_PAGE_SIZE).get_page(request.GET.get("page"))
-    return render(request, "workouts/history.html", {"page": page})
 
 
 @login_required
