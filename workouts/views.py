@@ -56,7 +56,12 @@ def _render_upload(request, form, too_large=None):
     return render(
         request,
         "workouts/upload.html",
-        {"form": form, "too_large": too_large},
+        {
+            "form": form,
+            "too_large": too_large,
+            "max_upload_bytes": MAX_UPLOAD_BYTES,
+            "too_large_message": TOO_LARGE_MESSAGE,
+        },
     )
 
 

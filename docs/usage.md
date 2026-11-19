@@ -17,15 +17,19 @@ this data, so the export is the only way in:
 1. Open the Strong app and go to your profile or its settings screen.
 2. Choose **Export workouts** (some versions label it **Export data**) and export
    the CSV.
-3. Save the file, then choose it on `/upload/` and press *Preview*.
+3. Save the file, then choose it on `/upload/`; the preview opens as soon as the
+   file is chosen.
 
 The upload page carries the same three steps, so the export instructions are
 available at the point of use.
 
 ## Import an export
 
-1. **Upload** (`/upload/`) — choose the CSV file Strong exported and press
-   *Preview*. The file must be a Strong export with the `Date`, `Workout Name`,
+1. **Upload** (`/upload/`) — choose the CSV file Strong exported. Choosing it
+   submits the upload and opens the preview; with JavaScript off the page keeps a
+   *Preview* button instead. A pick larger than 10 MB is refused in the browser,
+   beside the field, before anything is sent, so the chosen file is never lost to
+   a round trip. The file must be a Strong export with the `Date`, `Workout Name`,
    `Exercise Name`, `Set Order`, `Weight` and `Reps` headers, and at most 10 MB.
    Extra columns are ignored; `Duration`, `Distance`, `Seconds` and `RPE` are used
    when present. Nothing on this page talks about replacement: the import is only

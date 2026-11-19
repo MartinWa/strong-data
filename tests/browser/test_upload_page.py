@@ -4,6 +4,7 @@ from django.core.files.uploadedfile import SimpleUploadedFile
 from django.urls import reverse
 
 from workouts.services import import_workouts_csv
+from workouts.views import MAX_UPLOAD_BYTES, TOO_LARGE_MESSAGE
 
 HEADER = "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
 
@@ -95,6 +96,40 @@ def test_upload_field_states_the_size_limit_and_is_described_by_it(client):
     assert 'aria-describedby="id_csv_file_helptext"' in content
     assert 'id="id_csv_file_helptext"' in content
     assert "Up to 10 MB." in content
+
+
+@pytest.mark.django_db
+def test_upload_autosubmits_when_a_file_is_chosen(client):
+    signed_in(client)
+
+    content = client.get(reverse("upload")).content.decode()
+
+    assert "data-upload-form" in content
+    assert 'src="/static/workouts/upload.js"' in content
+    noscript = content[content.index("<noscript>") : content.index("</noscript>")]
+    assert ">Preview<" in noscript
+    assert content.count(">Preview<") == 1
+
+
+@pytest.mark.django_db
+def test_upload_size_limit_reaches_the_browser_from_the_server_constant(client):
+    signed_in(client)
+
+    content = client.get(reverse("upload")).content.decode()
+
+    assert f'data-max-bytes="{MAX_UPLOAD_BYTES}"' in content
+    assert f'data-too-large="{TOO_LARGE_MESSAGE}"' in content
+    assert 'id="id_csv_file_client_error"' in content
+    assert 'role="status"' in content
+
+
+@pytest.mark.django_db
+def test_upload_picker_only_offers_csv_files(client):
+    signed_in(client)
+
+    content = client.get(reverse("upload")).content.decode()
+
+    assert 'accept=".csv,text/csv"' in content
 
 
 @pytest.mark.django_db

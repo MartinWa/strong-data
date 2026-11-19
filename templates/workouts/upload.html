@@ -1,5 +1,9 @@
 {% extends "base.html" %}
+{% load assets %}
 {% block title %}Upload — strong-data{% endblock %}
+{% block scripts %}
+<script src="{% asset 'workouts/upload.js' %}" defer></script>
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>Upload a Strong CSV export</h1>
@@ -7,12 +11,17 @@
 </div>
 
 <div class="card">
-  <form method="post" enctype="multipart/form-data" class="form">
+  <form method="post" enctype="multipart/form-data" class="form"
+        data-upload-form
+        data-max-bytes="{{ max_upload_bytes }}"
+        data-too-large="{{ too_large_message }}">
     {% csrf_token %}
-    {% include "partials/field.html" with field=form.csv_file force_invalid=too_large %}
-    <div class="actions">
-      <button class="btn btn-primary" type="submit">Preview</button>
-    </div>
+    {% include "partials/field.html" with field=form.csv_file force_invalid=too_large client_error=True %}
+    <noscript>
+      <div class="actions">
+        <button class="btn btn-primary" type="submit">Preview</button>
+      </div>
+    </noscript>
   </form>
 
   <details class="export-help">
@@ -20,7 +29,7 @@
     <ol>
       <li>Open the Strong app and go to your profile or its settings screen.</li>
       <li>Choose <em>Export workouts</em> (some versions label it <em>Export data</em>).</li>
-      <li>Save the CSV file, then choose it above and press <em>Preview</em>.</li>
+      <li>Save the CSV file, then choose it above to see the preview.</li>
     </ol>
   </details>
 </div>
