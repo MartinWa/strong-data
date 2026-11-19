@@ -42,6 +42,7 @@ cp .env.example .env
 | `STRONG_STATIC_ROOT` | Where collected static files live (the image ships them at `/app/staticfiles`). Override only for special setups. |
 | `STRONG_PENDING_DIR` | Where previewed-but-unconfirmed uploads are staged. Defaults to `/tmp/strong-data-pending`, which lands on the container's `/tmp` tmpfs; override only if you mount a dedicated volume. |
 | `STRONG_CSRF_TRUSTED_ORIGINS` | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
+| `STRONG_UPDATE_CHECK` | `true` (default) lets the footer ask GitHub for the latest stable release and show a dot when a newer one exists. The answer is cached for six hours and the request never blocks page rendering. Set `false` for an installation that must make no outbound requests. |
 | `STRONG_PORT` | Listen port inside the container (default `8000`). |
 | `STRONG_TRUSTED_PROXY` | Address allowed to set forwarding headers. No default: without it, `X-Forwarded-Proto` is ignored and HTTPS form submissions fail the CSRF origin check. Set it to the proxy's container address, or to `*` when the app is reachable only from the proxy network (the example file ships `*`). |
 

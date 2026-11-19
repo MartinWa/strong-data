@@ -1,14 +1,18 @@
-from django.urls import reverse
+from django.conf import settings
 
+from .releases import RELEASES_URL, REPOSITORY_URL, version_number
 from .version import app_version
 
 API_BASE = "/api/v1"
 
 
 def app_info(request):
+    version = app_version()
     return {
-        "app_version": app_version(),
-        "api_reference_url": reverse("api_reference"),
-        "api_schema_url": f"{API_BASE}/openapi.json",
-        "api_health_url": f"{API_BASE}/healthz",
+        "app_version": version,
+        "app_is_release": version_number(version) is not None,
+        "app_repository_url": REPOSITORY_URL,
+        "app_releases_url": RELEASES_URL,
+        "app_check_updates": settings.UPDATE_CHECK_ENABLED,
+        "api_docs_url": f"{API_BASE}/docs",
     }

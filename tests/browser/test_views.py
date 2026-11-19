@@ -1,6 +1,7 @@
 import csv
 import hashlib
 import os
+import re
 import time
 
 import pytest
@@ -42,22 +43,44 @@ def small_field_limit():
 
 
 @pytest.mark.django_db
-def test_footer_shows_version_and_api_links(client):
+def test_footer_shows_version_and_github_links(client):
     response = client.get(reverse("login"))
+    content = response.content.decode()
 
     assert response.status_code == 200
-    assert app_version().encode() in response.content
-    assert b"/api-reference/" in response.content
-    assert b"/api/v1/healthz" in response.content
+    assert app_version() in content
+    assert 'href="https://github.com/' in content
+    assert "/api/v1/docs" not in content
+    assert "/api/v1/healthz" not in content
+    assert "api-reference" not in content
 
 
-def test_api_reference_is_readable_without_a_token(client):
-    response = client.get(reverse("api_reference"))
+@pytest.mark.django_db
+def test_footer_links_api_reference_when_logged_in(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
 
-    assert response.status_code == 200
-    assert b"/series/volume" in response.content
-    assert b"/api/v1/openapi.json" in response.content
-    assert b"returns 401" in response.content
+    content = client.get(reverse("history")).content.decode()
+
+    assert '<a href="/api/v1/docs">API reference</a>' in content
+    assert "/api/v1/healthz" not in content
+
+
+def test_footer_version_links_to_releases(client):
+    content = client.get(reverse("login")).content.decode()
+
+    assert re.search(rf'<a href="[^"]*/releases[^"]*"[^>]*>\s*{re.escape(app_version())}', content)
+
+
+def test_password_toggle_is_an_icon_button(client):
+    content = client.get(reverse("login")).content.decode()
+
+    assert 'class="password-toggle"' in content
+    assert 'aria-label="Show password"' in content
+    assert '<div class="password-field">' in content
+    assert content.index('class="password-field"') < content.index('class="password-toggle"')
+    assert "<svg" in content
+    assert ">Show<" not in content
 
 
 @pytest.mark.django_db
@@ -392,3 +415,39 @@ def test_preview_sweeps_expired_pending_files(client, tmp_path):
     assert response.status_code == 302
     assert response.url == reverse("upload")
     assert list((tmp_path / "pending").iterdir()) == []
+
+
+@pytest.mark.django_db
+def test_login_page_offers_remember_me_and_a_password_toggle(client):
+    response = client.get(reverse("login"))
+    body = response.content.decode()
+
+    assert 'name="remember_me"' in body
+    assert "data-password-toggle" in body
+    assert "There is no open registration." in body
+
+
+@pytest.mark.django_db
+def test_login_without_remember_me_expires_the_session_at_browser_close(client):
+    get_user_model().objects.create_user(username="alice", password="synthetic-pass-123")
+
+    response = client.post(
+        reverse("login"),
+        {"username": "alice", "password": "synthetic-pass-123"},
+    )
+
+    assert response.status_code == 302
+    assert client.session.get_expire_at_browser_close() is True
+
+
+@pytest.mark.django_db
+def test_login_with_remember_me_keeps_the_configured_session_age(client):
+    get_user_model().objects.create_user(username="alice", password="synthetic-pass-123")
+
+    response = client.post(
+        reverse("login"),
+        {"username": "alice", "password": "synthetic-pass-123", "remember_me": "on"},
+    )
+
+    assert response.status_code == 302
+    assert client.session.get_expire_at_browser_close() is False

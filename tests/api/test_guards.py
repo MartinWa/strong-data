@@ -1,6 +1,7 @@
 import hashlib
 from datetime import timedelta
 
+from django.contrib.staticfiles import finders
 from django.test import Client
 from django.utils import timezone
 
@@ -71,6 +72,38 @@ def test_token_prefix_collision_rejected(alice):
         401,
         "invalid_credentials",
     )
+
+
+def test_docs_page_requires_token(auth):
+    assert_error(Client().get(BASE + "/docs"), 401, "invalid_credentials")
+    response = auth.get(BASE + "/docs")
+    assert response.status_code == 200
+    assert response["Cache-Control"] == "no-store"
+    assert b"swagger" in response.content.lower()
+
+
+def test_docs_serve_their_assets_locally(alice):
+    session = Client()
+    session.force_login(alice)
+
+    content = session.get(BASE + "/docs").content.decode()
+    assert "/static/ninja/swagger-ui-bundle.js" in content
+    assert "cdn.jsdelivr.net" not in content
+    assert finders.find("ninja/swagger-ui-bundle.js")
+
+
+def test_docs_and_schema_allow_a_logged_in_session(alice):
+    session = Client()
+    session.force_login(alice)
+
+    docs = session.get(BASE + "/docs")
+    assert docs.status_code == 200
+    assert docs["Cache-Control"] == "no-store"
+
+    schema = session.get(BASE + "/openapi.json")
+    assert schema.status_code == 200
+    assert schema["Cache-Control"] == "no-store"
+    assert "/api/v1/summary" in schema.json()["paths"]
 
 
 def test_openapi_requires_token(auth):

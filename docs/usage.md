@@ -6,7 +6,7 @@ How to get a Strong CSV export into strong-data and read it back.
 
 Accounts are administrator-managed; there is no public signup. Log in at
 `/accounts/login/` with the credentials your administrator created. Every page
-except the login form and the API reference requires a session, and every user
+except the login form requires a session, and every user
 sees only their own imports, corrections and tokens.
 
 ## Import an export
@@ -103,10 +103,12 @@ curl -fsS -H "Authorization: Bearer <secret>" \
   https://workouts.example.com/api/v1/summary
 ```
 
-`GET /api/v1/healthz` is the only anonymous endpoint. The endpoint-by-endpoint
-contract is in `docs/api.md`; the generated OpenAPI schema is at
-`/api/v1/openapi.json` and also requires the token. The human-readable API
-reference page at `/api-reference/` is public.
+`GET /api/v1/healthz` is the only anonymous endpoint. The generated OpenAPI
+schema is at `/api/v1/openapi.json` and the Swagger UI that renders it is at
+`/api/v1/docs`; both open in the browser once you are logged in, and both accept
+a bearer token from a client. `docs/api.md` covers the conventions the schema
+cannot express: auth, the envelope, guardrails and the derived-number
+definitions.
 
 ## Limits
 

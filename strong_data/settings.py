@@ -44,6 +44,7 @@ INSTALLED_APPS = [
     "django.contrib.sessions",
     "django.contrib.messages",
     "django.contrib.staticfiles",
+    "ninja",
     "workouts",
 ]
 
@@ -108,3 +109,9 @@ STATIC_ROOT.mkdir(exist_ok=True)
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "history"
+
+UPDATE_CHECK_ENABLED = os.environ.get("STRONG_UPDATE_CHECK", "true").strip().lower() in {
+    "1",
+    "true",
+    "yes",
+}

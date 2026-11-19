@@ -1,26 +1,79 @@
 {% extends "base.html" %}
 {% block title %}History — strong-data{% endblock %}
 {% block content %}
-<h1>Import history</h1>
+<div class="page-head">
+  <h1>Import history</h1>
+  <p class="lede">
+    {% if page.object_list %}
+    {{ page.paginator.count }} session{{ page.paginator.count|pluralize }} stored for your account.
+    {% else %}
+    Nothing imported yet.
+    {% endif %}
+  </p>
+</div>
+
 {% if not page.object_list %}
-<p>No sessions imported yet.</p>
+<div class="empty">
+  <p>No sessions imported yet.</p>
+  <a class="btn btn-primary" href="{% url 'upload' %}">Upload a CSV export</a>
+</div>
 {% endif %}
+
 {% for session in page %}
-<section>
-  <h2>{{ session.session_date }} — {{ session.workout_name }}</h2>
-  <p>Program {{ session.program }}; {{ session.set_count }} sets; {{ session.total_volume_kg }} kg.</p>
-  <ul>
-    {% for item in session.sets.all %}
-    <li>{{ item.exercise.name }} — {{ item.weight_kg|default_if_none:"—" }} kg × {{ item.reps }}</li>
-    {% endfor %}
-  </ul>
-</section>
+<article class="card session">
+  <header class="session-head">
+    <div>
+      <h2>{{ session.session_date }} — {{ session.workout_name }}</h2>
+      <p class="meta">Program {{ session.program }}</p>
+    </div>
+    <div class="session-stats">
+      <span class="badge">{{ session.set_count }} sets</span>
+      <span class="badge">{{ session.total_volume_kg }} kg</span>
+      {% if session.duration_min %}<span class="badge">{{ session.duration_min }} min</span>{% endif %}
+    </div>
+  </header>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Exercise</th>
+          <th class="num">Weight</th>
+          <th class="num">Reps</th>
+          <th class="num">RPE</th>
+          <th class="num">Volume</th>
+          <th class="num">Est. 1RM</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in session.sets.all %}
+        <tr>
+          <td>{{ item.exercise.name }}</td>
+          <td class="num">{{ item.weight_kg|default_if_none:"—" }}</td>
+          <td class="num">{{ item.reps }}</td>
+          <td class="num">{{ item.rpe|default_if_none:"—" }}</td>
+          <td class="num">{{ item.volume_kg }}</td>
+          <td class="num">{{ item.est_1rm_kg|default_if_none:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</article>
 {% endfor %}
+
 {% if page.has_other_pages %}
-<nav>
-  {% if page.has_previous %}<a href="?page={{ page.previous_page_number }}">Newer</a>{% endif %}
+<nav class="pager" aria-label="Pagination">
+  {% if page.has_previous %}
+  <a class="btn btn-sm" href="?page={{ page.previous_page_number }}">Newer</a>
+  {% else %}
+  <span class="btn btn-sm" aria-disabled="true" style="opacity: 0.45;">Newer</span>
+  {% endif %}
   <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-  {% if page.has_next %}<a href="?page={{ page.next_page_number }}">Older</a>{% endif %}
+  {% if page.has_next %}
+  <a class="btn btn-sm" href="?page={{ page.next_page_number }}">Older</a>
+  {% else %}
+  <span class="btn btn-sm" aria-disabled="true" style="opacity: 0.45;">Older</span>
+  {% endif %}
 </nav>
 {% endif %}
 {% endblock %}

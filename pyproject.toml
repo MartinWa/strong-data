@@ -37,6 +37,7 @@ select = ["E", "F", "I", "B", "UP", "SIM", "S"]
 
 [tool.ruff.lint.per-file-ignores]
 "api/routers/*.py" = ["B008"]
+"strong_data/releases.py" = ["S310"]
 "tests/**" = ["S101", "S105", "S106"]
 "tests/settings.py" = ["E402", "F403", "F405", "S101", "S105", "S106"]
 "strong_data/settings.py" = ["S105"]

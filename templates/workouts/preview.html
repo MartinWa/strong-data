@@ -1,62 +1,128 @@
 {% extends "base.html" %}
 {% block title %}Preview — strong-data{% endblock %}
 {% block content %}
-<h1>Preview import</h1>
-<p>{{ summary.sessions|length }} sessions, {{ summary.total_sets }} sets, {{ summary.exercises|length }} exercises.</p>
+<div class="page-head">
+  <h1>Preview import</h1>
+  <p class="lede">Nothing has been written yet. Confirming replaces everything currently stored for your account.</p>
+</div>
+
+<div class="stat-grid">
+  <div class="stat">
+    <span class="stat-label">Sessions</span>
+    <span class="stat-value">{{ summary.sessions|length }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Sets</span>
+    <span class="stat-value">{{ summary.total_sets }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Exercises</span>
+    <span class="stat-value">{{ summary.exercises|length }}</span>
+  </div>
+  <div class="stat">
+    <span class="stat-label">Warnings</span>
+    <span class="stat-value">{{ summary.warnings|length }}{% if summary.hidden_warnings %}+{% endif %}</span>
+  </div>
+</div>
+
 {% if summary.warnings %}
-<h2>Warnings</h2>
-<ul>
-  {% for warning in summary.warnings %}<li>{{ warning }}</li>{% endfor %}
-</ul>
-{% if summary.hidden_warnings %}
-<p>… and {{ summary.hidden_warnings }} more warnings.</p>
+<div class="card">
+  <div class="card-head">
+    <h2>Warnings</h2>
+    <span class="badge badge-danger">{{ summary.warnings|length }} shown</span>
+  </div>
+  <ul class="warnings">
+    {% for warning in summary.warnings %}<li>{{ warning }}</li>{% endfor %}
+  </ul>
+  {% if summary.hidden_warnings %}
+  <p class="muted small" style="margin-top: 0.75rem;">… and {{ summary.hidden_warnings }} more warnings.</p>
+  {% endif %}
+</div>
 {% endif %}
-{% endif %}
-<h2>Sessions</h2>
-<table>
-  <thead>
-    <tr><th>Date</th><th>Workout</th><th>Program</th><th>Sets</th><th>Volume (kg)</th><th>Duration (min)</th></tr>
-  </thead>
-  <tbody>
-    {% for session in summary.sessions %}
-    <tr>
-      <td>{{ session.date }}</td>
-      <td>{{ session.workout_name }}</td>
-      <td>{{ session.program }}</td>
-      <td>{{ session.set_count }}</td>
-      <td>{{ session.total_volume_kg }}</td>
-      <td>{{ session.duration_min|default_if_none:"—" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-<h2>Sample sets</h2>
-<p>The first {{ summary.sample_sets|length }} of {{ summary.total_sets }} sets. Confirming imports all of them.</p>
-<table>
-  <thead>
-    <tr><th>Time</th><th>Exercise</th><th>Order</th><th>Weight</th><th>Reps</th><th>RPE</th><th>Volume</th><th>1RM</th></tr>
-  </thead>
-  <tbody>
-    {% for item in summary.sample_sets %}
-    <tr>
-      <td>{{ item.set_time }}</td>
-      <td>{{ item.exercise_name }}</td>
-      <td>{{ item.set_order }}</td>
-      <td>{{ item.weight_kg|default_if_none:"—" }}</td>
-      <td>{{ item.reps }}</td>
-      <td>{{ item.rpe|default_if_none:"—" }}</td>
-      <td>{{ item.volume_kg }}</td>
-      <td>{{ item.est_1rm_kg|default_if_none:"—" }}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
-<p>Confirming replaces all sessions, sets and exercises currently stored for your
-account. Muscle-group corrections are kept.</p>
-<form method="post">
-  {% csrf_token %}
-  <input type="hidden" name="import_id" value="{{ import_id }}">
-  <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
-  <button type="submit">Confirm import</button>
-</form>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Sessions</h2>
+    <span class="badge">{{ summary.sessions|length }}</span>
+  </div>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th>Workout</th>
+          <th>Program</th>
+          <th class="num">Sets</th>
+          <th class="num">Volume (kg)</th>
+          <th class="num">Duration (min)</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for session in summary.sessions %}
+        <tr>
+          <td>{{ session.date }}</td>
+          <td>{{ session.workout_name }}</td>
+          <td class="muted">{{ session.program }}</td>
+          <td class="num">{{ session.set_count }}</td>
+          <td class="num">{{ session.total_volume_kg }}</td>
+          <td class="num">{{ session.duration_min|default_if_none:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-head">
+    <h2>Sample sets</h2>
+    <span class="badge">{{ summary.sample_sets|length }} of {{ summary.total_sets }}</span>
+  </div>
+  <p class="muted small">The first {{ summary.sample_sets|length }} of {{ summary.total_sets }} sets. Confirming imports all of them.</p>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Time</th>
+          <th>Exercise</th>
+          <th class="num">Order</th>
+          <th class="num">Weight</th>
+          <th class="num">Reps</th>
+          <th class="num">RPE</th>
+          <th class="num">Volume</th>
+          <th class="num">1RM</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in summary.sample_sets %}
+        <tr>
+          <td class="muted">{{ item.set_time }}</td>
+          <td>{{ item.exercise_name }}</td>
+          <td class="num">{{ item.set_order }}</td>
+          <td class="num">{{ item.weight_kg|default_if_none:"—" }}</td>
+          <td class="num">{{ item.reps }}</td>
+          <td class="num">{{ item.rpe|default_if_none:"—" }}</td>
+          <td class="num">{{ item.volume_kg }}</td>
+          <td class="num">{{ item.est_1rm_kg|default_if_none:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<div class="card">
+  <div class="notice notice-warn">
+    <strong>This replaces your current data.</strong>
+    Confirming replaces all sessions, sets and exercises currently stored for your account.
+    Muscle-group corrections are kept.
+  </div>
+  <form method="post" class="actions">
+    {% csrf_token %}
+    <input type="hidden" name="import_id" value="{{ import_id }}">
+    <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
+    <button class="btn btn-primary" type="submit">Confirm import</button>
+    <a class="btn btn-ghost" href="{% url 'upload' %}">Cancel</a>
+  </form>
+</div>
 {% endblock %}

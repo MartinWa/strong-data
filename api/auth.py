@@ -44,6 +44,8 @@ class BearerAuth(AuthBase):
 def docs_auth(view):
     @wraps(view)
     def wrapper(request, *args, **kwargs):
+        if request.user.is_authenticated:
+            return view(request, *args, **kwargs)
         try:
             resolve_bearer(request)
         except Exception as exc:

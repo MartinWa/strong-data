@@ -34,7 +34,7 @@ docker compose -f compose.development.yaml up --build
 - `docs/deployment.md` — reverse-proxy deployment and Compose
 - `docs/backup-and-recovery.md` — backing up and restoring SQLite
 - `docs/data-model.md` — tables and derived fields
-- `docs/api.md` — endpoint-by-endpoint API contract and generated OpenAPI reference
+- `docs/api.md` — API auth, envelope, guardrails and derived-number definitions
 - `SECURITY.md` — security policy and vulnerability reporting
 - `CONTRIBUTING.md` — contribution workflow
 - `LICENSE` / `NOTICE` — PolyForm Noncommercial 1.0.0
