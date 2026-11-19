@@ -47,6 +47,18 @@ docker compose -f compose.development.yaml up --build
 Database, virtualenv and caches live on named volumes; rebuild after dependency
 changes so the seeded virtualenv is refreshed from the image.
 
+Restart the container after adding a new template tag library:
+
+```sh
+docker compose -f compose.development.yaml restart web
+```
+
+Django caches the set of installed tag libraries per process, so a long-running
+`runserver` can still answer `/sessions/` with `'formatting' is not a registered tag
+library` after `workouts/templatetags/formatting.py` exists on disk. The bind mount is
+fine; only the process is stale. Any page that reports a missing library lists `assets`
+but not the new one — that is the signal to restart rather than to debug the module.
+
 ## Optional parity check
 
 Set `STRONG_LOCAL_CSV` to a local export to run the opt-in parser parity test. It is

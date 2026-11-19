@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load formatting %}
 {% block title %}Tokens — strong-data{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -29,12 +30,12 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Name</th>
-          <th>Prefix</th>
-          <th>Created</th>
-          <th>Expiry</th>
-          <th>Status</th>
-          <th class="tight"></th>
+          <th scope="col">Name</th>
+          <th scope="col">Prefix</th>
+          <th scope="col">Created</th>
+          <th scope="col">Expiry</th>
+          <th scope="col">Status</th>
+          <th scope="col" class="tight"></th>
         </tr>
       </thead>
       <tbody>
@@ -42,8 +43,8 @@
         <tr>
           <td>{{ token.name }}</td>
           <td><code>{{ token.prefix }}…</code></td>
-          <td class="muted">{{ token.created_at|date:"Y-m-d" }}</td>
-          <td class="muted">{% if token.expires_at %}expires {{ token.expires_at|date:"Y-m-d H:i" }}{% else %}—{% endif %}</td>
+          <td class="muted">{{ token.created_at|isodate:"day" }}</td>
+          <td class="muted">{% if token.expires_at %}expires {{ token.expires_at|isodate }}{% else %}—{% endif %}</td>
           <td>
             {% if token.revoked_at %}
             <span class="badge badge-danger">revoked</span>

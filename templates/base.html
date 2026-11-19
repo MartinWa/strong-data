@@ -6,19 +6,20 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
   <title>{% block title %}strong-data{% endblock %}</title>
+  <link rel="icon" href="{% asset 'workouts/favicon.svg' %}" type="image/svg+xml">
   <link rel="stylesheet" href="{% asset 'workouts/app.css' %}">
 </head>
 <body>
+  <a class="skip-link" href="#main">Skip to content</a>
   <header class="site-header">
     <div class="container header-inner">
-      <a class="brand" href="{% url 'sessions' %}">strong<span>data</span></a>
+      <a class="brand" href="{% url 'sessions' %}" aria-label="strong-data">strong<span aria-hidden="true">data</span></a>
       {% if user.is_authenticated %}
       <nav class="site-nav" aria-label="Main">
         <a href="{% url 'sessions' %}"{% if request.resolver_match.url_name == 'sessions' %} class="active" aria-current="page"{% endif %}>Sessions</a>
         <a href="{% url 'upload' %}"{% if request.resolver_match.url_name == 'upload' %} class="active" aria-current="page"{% endif %}>Upload</a>
         <a href="{% url 'corrections' %}"{% if request.resolver_match.url_name == 'corrections' %} class="active" aria-current="page"{% endif %}>Muscle groups</a>
         <a href="{% url 'tokens' %}"{% if request.resolver_match.url_name == 'tokens' %} class="active" aria-current="page"{% endif %}>Tokens</a>
-        <a href="{{ api_docs_url }}">API</a>
       </nav>
       <form class="logout" action="{% url 'logout' %}" method="post">
         {% csrf_token %}
@@ -28,9 +29,9 @@
     </div>
   </header>
 
-  <main class="container">
+  <main class="container" id="main" tabindex="-1">
     {% if messages %}
-    <ul class="messages">
+    <ul class="messages" role="status" aria-live="polite">
       {% for message in messages %}
       <li class="msg msg-{{ message.tags|default:'info' }}">{{ message }}</li>
       {% endfor %}
