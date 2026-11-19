@@ -62,7 +62,7 @@ def test_footer_links_api_reference_when_logged_in(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     client.force_login(user)
 
-    content = client.get(reverse("history")).content.decode()
+    content = client.get(reverse("sessions")).content.decode()
 
     assert '<a href="/api/v1/docs">API reference</a>' in content
     assert "/api/v1/healthz" not in content
@@ -86,7 +86,7 @@ def test_password_toggle_is_an_icon_button(client):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("name", ["upload", "history", "corrections", "tokens"])
+@pytest.mark.parametrize("name", ["upload", "sessions", "corrections", "tokens"])
 def test_views_require_login(client, name):
     response = client.get(reverse(name))
     assert response.status_code == 302
@@ -115,7 +115,7 @@ def test_upload_preview_confirm_flow(client):
         },
     )
     assert response.status_code == 302
-    assert response.url == reverse("history")
+    assert response.url == reverse("sessions")
     assert WorkoutSession.objects.filter(owner=user).count() == 1
     assert "pending_import" not in client.session
 
@@ -193,12 +193,12 @@ def test_token_creation_and_revocation_are_owner_scoped(client):
 
 
 @pytest.mark.django_db
-def test_history_renders_imported_sets(client):
+def test_sessions_renders_imported_sets(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     import_workouts_csv(user, CSV)
     client.force_login(user)
 
-    response = client.get(reverse("history"))
+    response = client.get(reverse("sessions"))
 
     assert response.status_code == 200
     assert b"Chest Fly" in response.content
@@ -206,13 +206,13 @@ def test_history_renders_imported_sets(client):
 
 
 @pytest.mark.django_db
-def test_history_prefetches_exercises(client):
+def test_sessions_prefetches_exercises(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     client.force_login(user)
 
     import_workouts_csv(user, CSV)
     with CaptureQueriesContext(connection) as baseline:
-        client.get(reverse("history"))
+        client.get(reverse("sessions"))
 
     larger_csv = CSV + "\n".join(
         f"2026-01-05 09:{minute:02d}:00,Push Day #1,54m,Exercise {minute},1,80,5,0,0,8"
@@ -220,10 +220,166 @@ def test_history_prefetches_exercises(client):
     )
     import_workouts_csv(user, larger_csv)
     with CaptureQueriesContext(connection) as grown:
-        response = client.get(reverse("history"))
+        response = client.get(reverse("sessions"))
 
     assert response.status_code == 200
     assert len(grown) == len(baseline)
+
+
+MULTI_SESSION_CSV = (
+    "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+    "2026-01-05 09:00:00,Push Day #1,54m,Bench Press (Barbell),1,80,5,0,0,8.0\n"
+    "2026-02-10 18:00:00,Pull Day,47m,Barbell Row,1,60,8,0,0,\n"
+    "2026-03-20 07:30:00,Leg Day,62m,Back Squat,1,100,5,0,0,9.0\n"
+)
+
+
+@pytest.mark.django_db
+def test_legacy_history_url_redirects_to_sessions(client):
+    response = client.get("/history/")
+
+    assert response.status_code == 301
+    assert response.url == "/sessions/"
+
+
+@pytest.mark.django_db
+def test_sessions_empty_state_prompts_upload(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    response = client.get(reverse("sessions"))
+    content = response.content.decode()
+
+    assert response.status_code == 200
+    assert "No sessions yet." in content
+    assert "Upload a Strong CSV export to see your workouts here." in content
+    assert 'href="/upload/"' in content
+    assert 'aria-label="Filter sessions"' not in content
+
+
+@pytest.mark.django_db
+def test_sessions_rows_are_collapsed_details(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("sessions")).content.decode()
+
+    assert '<details class="card session">' in content
+    assert '<summary class="session-head">' in content
+    assert '<details class="card session" open' not in content
+    assert "Bench Press (Barbell)" in content
+
+
+@pytest.mark.django_db
+def test_sessions_filter_by_program(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, MULTI_SESSION_CSV)
+    client.force_login(user)
+
+    response = client.get(reverse("sessions"), {"program": "Pull Day"})
+
+    assert response.context["page"].paginator.count == 1
+    assert b"Barbell Row" in response.content
+    assert b"Back Squat" not in response.content
+    assert b'value="Pull Day" selected' in response.content
+
+
+@pytest.mark.django_db
+def test_sessions_filter_by_date_range(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, MULTI_SESSION_CSV)
+    client.force_login(user)
+
+    in_range = client.get(reverse("sessions"), {"from": "2026-02-01", "to": "2026-02-28"})
+    invalid = client.get(reverse("sessions"), {"from": "not-a-date"})
+
+    assert in_range.context["page"].paginator.count == 1
+    assert b"Barbell Row" in in_range.content
+    assert b"Back Squat" not in in_range.content
+    assert invalid.context["page"].paginator.count == 3
+
+
+@pytest.mark.django_db
+def test_sessions_search_matches_workout_or_exercise(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, MULTI_SESSION_CSV)
+    client.force_login(user)
+
+    by_exercise = client.get(reverse("sessions"), {"q": "squat"})
+    by_workout = client.get(reverse("sessions"), {"q": "pull"})
+
+    assert by_exercise.context["page"].paginator.count == 1
+    assert b"Back Squat" in by_exercise.content
+    assert by_workout.context["page"].paginator.count == 1
+    assert b"Barbell Row" in by_workout.content
+
+
+@pytest.mark.django_db
+def test_sessions_no_match_state_offers_clear(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, MULTI_SESSION_CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("sessions"), {"q": "deadlift"}).content.decode()
+
+    assert "No sessions match these filters." in content
+    assert "Clear filters" in content
+    assert "No sessions yet." not in content
+
+
+@pytest.mark.django_db
+def test_sessions_pager_keeps_filters(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    rows = "\n".join(
+        f"2026-01-{day:02d} 09:00:00,Push Day,54m,Bench Press,1,80,5,0,0,8" for day in range(1, 31)
+    )
+    import_workouts_csv(user, CSV.splitlines()[0] + "\n" + rows + "\n")
+
+    content = client.get(reverse("sessions"), {"q": "Bench"}).content.decode()
+
+    assert "?q=Bench&amp;page=2" in content or "?q=Bench&page=2" in content
+
+
+@pytest.mark.django_db
+def test_sessions_filters_apply_without_submit_by_default(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, MULTI_SESSION_CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("sessions")).content.decode()
+
+    assert "data-filter-form" in content
+    assert 'src="/static/workouts/filters.js"' in content
+    assert 'type="submit">Filter</button>' in content
+
+
+@pytest.mark.django_db
+def test_sessions_clear_button_always_rendered(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, MULTI_SESSION_CSV)
+    client.force_login(user)
+
+    unfiltered = client.get(reverse("sessions")).content.decode()
+    filtered = client.get(reverse("sessions"), {"q": "squat"}).content.decode()
+
+    assert 'href="/sessions/">Clear</a>' in unfiltered
+    assert 'href="/sessions/">Clear</a>' in filtered
+
+
+@pytest.mark.django_db
+def test_sessions_badges_pluralize_and_trim_volume(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, MULTI_SESSION_CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("sessions"), {"q": "pull"}).content.decode()
+
+    assert ">1 set<" in content
+    assert ">1 sets<" not in content
+    assert ">480 kg<" in content
+    assert "480.00 kg" not in content
 
 
 @pytest.mark.django_db
@@ -270,13 +426,13 @@ def test_duplicate_token_name_returns_form_error(client):
 
 
 @pytest.mark.django_db
-def test_login_without_next_redirects_to_history(client):
+def test_login_without_next_redirects_to_sessions(client):
     get_user_model().objects.create_user(username="alice", password="secret")
 
     response = client.post(reverse("login"), {"username": "alice", "password": "secret"})
 
     assert response.status_code == 302
-    assert response.url == reverse("history")
+    assert response.url == reverse("sessions")
 
 
 @pytest.mark.django_db
@@ -327,7 +483,7 @@ def test_expired_preview_redirects_to_upload(client):
 
 
 @pytest.mark.django_db
-def test_history_paginates_sessions(client):
+def test_sessions_paginates_sessions(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     client.force_login(user)
     rows = "\n".join(
@@ -335,8 +491,8 @@ def test_history_paginates_sessions(client):
     )
     import_workouts_csv(user, CSV.splitlines()[0] + "\n" + rows + "\n")
 
-    first = client.get(reverse("history"))
-    second = client.get(reverse("history") + "?page=2")
+    first = client.get(reverse("sessions"))
+    second = client.get(reverse("sessions") + "?page=2")
 
     assert first.context["page"].paginator.num_pages == 2
     assert len(first.context["page"].object_list) == 25
@@ -346,6 +502,8 @@ def test_history_paginates_sessions(client):
         > second.context["page"].object_list[0].session_date
     )
     assert b'href="?page=2">Older</a>' in first.content
+    assert "Sessions" in first.content.decode()
+    assert "Import history" not in first.content.decode()
 
 
 @pytest.mark.django_db

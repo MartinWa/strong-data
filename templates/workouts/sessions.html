@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% load assets %}
+{% block title %}Sessions — strong-data{% endblock %}
+{% block scripts %}<script src="{% asset 'workouts/filters.js' %}" defer></script>{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Sessions</h1>
+  <p class="lede">
+    {% if page.paginator.count %}
+    {{ page.paginator.count }} session{{ page.paginator.count|pluralize }}{% if filtered %} matching your filters{% else %} stored for your account{% endif %}.
+    {% elif has_data %}
+    No sessions match these filters.
+    {% else %}
+    No sessions yet. Upload a Strong CSV export to see your workouts here.
+    {% endif %}
+  </p>
+</div>
+
+{% if has_data %}
+<form class="filters" method="get" action="{% url 'sessions' %}" role="search" aria-label="Filter sessions" data-filter-form>
+  <div class="filters-field filters-search">
+    <label for="filter-q">Search</label>
+    <input id="filter-q" type="search" name="q" value="{{ query }}" placeholder="Workout or exercise">
+  </div>
+  <div class="filters-field">
+    <label for="filter-program">Program</label>
+    <select id="filter-program" name="program">
+      <option value="">All programs</option>
+      {% for item in programs %}
+      <option value="{{ item }}"{% if item == selected_program %} selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="filters-field">
+    <label for="filter-from">From</label>
+    <input id="filter-from" type="date" name="from" value="{{ date_from }}">
+  </div>
+  <div class="filters-field">
+    <label for="filter-to">To</label>
+    <input id="filter-to" type="date" name="to" value="{{ date_to }}">
+  </div>
+  <div class="filters-actions">
+    <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+    <a class="btn btn-sm" href="{% url 'sessions' %}">Clear</a>
+  </div>
+</form>
+{% endif %}
+
+{% if not page.paginator.count %}
+<div class="empty">
+  {% if has_data %}
+  <p>No sessions match these filters.</p>
+  <a class="btn" href="{% url 'sessions' %}">Clear filters</a>
+  {% else %}
+  <p>No sessions yet.</p>
+  <p>Upload a Strong CSV export to see your workouts here.</p>
+  <a class="btn btn-primary" href="{% url 'upload' %}">Upload CSV export</a>
+  {% endif %}
+</div>
+{% endif %}
+
+{% for session in page %}
+<details class="card session">
+  <summary class="session-head">
+    <span class="session-heading">
+      <span class="session-date">{{ session.session_date|date:"j M Y" }}</span>
+      <span class="session-title">{{ session.workout_name }}</span>
+      <span class="meta">Program {{ session.program }}</span>
+    </span>
+    <span class="session-stats">
+      <span class="badge">{{ session.set_count }} set{{ session.set_count|pluralize }}</span>
+      <span class="badge">{{ session.total_volume_kg|floatformat:"-2" }} kg</span>
+      {% if session.duration_min %}<span class="badge">{{ session.duration_min }} min</span>{% endif %}
+    </span>
+  </summary>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>Exercise</th>
+          <th class="num">Weight</th>
+          <th class="num">Reps</th>
+          <th class="num">RPE</th>
+          <th class="num">Volume</th>
+          <th class="num">Est. 1RM</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for item in session.sets.all %}
+        <tr>
+          <td>{{ item.exercise.name }}</td>
+          <td class="num">{{ item.weight_kg|default_if_none:"—" }}</td>
+          <td class="num">{{ item.reps }}</td>
+          <td class="num">{{ item.rpe|default_if_none:"—" }}</td>
+          <td class="num">{{ item.volume_kg }}</td>
+          <td class="num">{{ item.est_1rm_kg|default_if_none:"—" }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</details>
+{% endfor %}
+
+{% if page.has_other_pages %}
+<nav class="pager" aria-label="Pagination">
+  {% if page.has_previous %}
+  <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}">Newer</a>
+  {% else %}
+  <span class="btn btn-sm" aria-disabled="true" style="opacity: 0.45;">Newer</span>
+  {% endif %}
+  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}
+  <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}">Older</a>
+  {% else %}
+  <span class="btn btn-sm" aria-disabled="true" style="opacity: 0.45;">Older</span>
+  {% endif %}
+</nav>
+{% endif %}
+{% endblock %}
