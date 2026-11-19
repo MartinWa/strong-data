@@ -5,7 +5,9 @@
   const search = form.querySelector('input[name="q"]');
   const submit = form.querySelector('button[type="submit"]');
   const storageKey = "strong-data:filter-focus";
+  const debounceMs = 350;
   let timer = null;
+  let composing = false;
 
   function serialize() {
     const params = new URLSearchParams(new FormData(form));
@@ -19,6 +21,7 @@
   let last = serialize();
 
   function apply(origin) {
+    if (composing) return;
     const query = serialize();
     if (query === last) return;
     last = query;
@@ -26,6 +29,13 @@
       sessionStorage.setItem(storageKey, "q");
     }
     window.location.assign(query ? form.action + "?" + query : form.action);
+  }
+
+  function scheduleApply() {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(function () {
+      apply("search");
+    }, debounceMs);
   }
 
   if (submit) submit.hidden = true;
@@ -36,14 +46,21 @@
   });
 
   if (search) {
-    search.addEventListener("input", function () {
+    search.addEventListener("compositionstart", function () {
+      composing = true;
       window.clearTimeout(timer);
-      timer = window.setTimeout(function () {
-        apply("search");
-      }, 350);
+    });
+    search.addEventListener("compositionend", function () {
+      composing = false;
+      scheduleApply();
+    });
+    search.addEventListener("input", function () {
+      if (composing) return;
+      scheduleApply();
     });
     search.addEventListener("keydown", function (event) {
-      if (event.key !== "Enter") return;
+      if (event.key !== "Enter" || event.isComposing || event.keyCode === 229 || composing)
+        return;
       event.preventDefault();
       window.clearTimeout(timer);
       apply("search");

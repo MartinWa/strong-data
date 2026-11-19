@@ -10,7 +10,7 @@ urlpatterns = [
     path("sessions/", views.sessions, name="sessions"),
     path(
         "history/",
-        RedirectView.as_view(pattern_name="sessions", permanent=True),
+        RedirectView.as_view(pattern_name="sessions", permanent=True, query_string=True),
         name="legacy_history",
     ),
     path("corrections/", views.corrections, name="corrections"),

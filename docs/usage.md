@@ -78,10 +78,16 @@ Three filters narrow the list: a free-text search matching the workout name or a
 exercise name, a program dropdown, and an optional date range. Filters combine,
 apply to whole sessions (a matched session still shows all of its sets), and are
 kept when you page. Changing any control applies the filters immediately — the
-search waits for a short typing pause — and *Clear* removes all of them. The
-*Filter* button is only needed when JavaScript is unavailable.
+search waits for a short typing pause and pauses while an input method (IME) is
+composing, so Japanese, Chinese or Korean input is never interrupted — and
+*Clear* removes all of them. The *Filter* button is only needed when JavaScript
+is unavailable.
 
-`/history/` permanently redirects to `/sessions/`.
+Search is a case-insensitive substring match on the stored names; it does not
+fold scripts, so a hiragana query does not find a katakana exercise name.
+
+`/history/` permanently redirects to `/sessions/`, keeping any query string, so
+an old `/history/?page=2` bookmark still lands on the same page.
 
 ## Muscle groups
 

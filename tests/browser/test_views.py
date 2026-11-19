@@ -243,6 +243,22 @@ def test_legacy_history_url_redirects_to_sessions(client):
 
 
 @pytest.mark.django_db
+def test_legacy_history_redirect_keeps_query_string(client):
+    response = client.get("/history/?page=2")
+
+    assert response.status_code == 301
+    assert response.url == "/sessions/?page=2"
+
+
+@pytest.mark.django_db
+def test_legacy_history_redirect_keeps_filters(client):
+    response = client.get("/history/?program=Pull+Day&q=row")
+
+    assert response.status_code == 301
+    assert response.url == "/sessions/?program=Pull+Day&q=row"
+
+
+@pytest.mark.django_db
 def test_sessions_empty_state_prompts_upload(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     client.force_login(user)
