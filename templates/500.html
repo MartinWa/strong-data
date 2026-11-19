@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block title %}Server error — strong-data{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Something went wrong</h1>
+  <p class="lede">This page could not be rendered. The error is recorded in the server log.</p>
+</div>
+
+<div class="empty">
+  {% if user.is_authenticated %}
+  <p>Your data is unchanged. Try again, or start from your sessions.</p>
+  <a class="btn btn-primary" href="{% url 'sessions' %}">Go to sessions</a>
+  {% else %}
+  <p>Try again, or log in to continue.</p>
+  <a class="btn btn-primary" href="{% url 'login' %}">Log in</a>
+  {% endif %}
+</div>
+{% endblock %}

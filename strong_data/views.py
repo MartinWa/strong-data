@@ -1,5 +1,6 @@
 from django.contrib.auth import views as auth_views
 from django.http import JsonResponse
+from django.shortcuts import render
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
@@ -23,3 +24,11 @@ class LoginView(auth_views.LoginView):
 @never_cache
 def release_status(request):
     return JsonResponse({"update_available": update_available()})
+
+
+def not_found(request, exception):
+    return render(request, "404.html", status=404)
+
+
+def server_error(request):
+    return render(request, "500.html", status=500)
