@@ -10,8 +10,9 @@ from parsing import ParsedWorkouts
 
 PENDING_TTL_SECONDS = 3600
 SAMPLE_SET_LIMIT = 20
-WARNING_LIMIT = 50
+WARNING_ROW_LIMIT = 20
 IMPORT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
+ROW_WARNING_PATTERN = re.compile(r"Row (\d+): (.+)")
 
 
 def pending_dir() -> Path:
@@ -94,6 +95,25 @@ def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> None:
             continue
 
 
+def group_warnings(warnings: tuple[str, ...] | list[str]) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for warning in warnings:
+        match = ROW_WARNING_PATTERN.fullmatch(warning)
+        message = match.group(2) if match else warning
+        group = groups.setdefault(
+            message,
+            {"message": message, "count": 0, "rows": [], "hidden_rows": 0},
+        )
+        group["count"] += 1
+        if match is None:
+            continue
+        if len(group["rows"]) < WARNING_ROW_LIMIT:
+            group["rows"].append(int(match.group(1)))
+        else:
+            group["hidden_rows"] += 1
+    return sorted(groups.values(), key=lambda group: (-group["count"], group["message"]))
+
+
 def summarize(parsed: ParsedWorkouts) -> dict:
     sessions = [
         {
@@ -127,12 +147,12 @@ def summarize(parsed: ParsedWorkouts) -> dict:
             )
         if len(sample_sets) >= SAMPLE_SET_LIMIT:
             break
-    warnings = list(parsed.warnings[:WARNING_LIMIT])
+    warnings = list(parsed.warnings)
     return {
         "sessions": sessions,
         "exercises": list(parsed.exercises),
-        "warnings": warnings,
-        "hidden_warnings": len(parsed.warnings) - len(warnings),
+        "warning_total": len(warnings),
+        "warning_groups": group_warnings(warnings),
         "sample_sets": sample_sets,
         "total_sets": sum(session.set_count for session in parsed.sessions),
     }

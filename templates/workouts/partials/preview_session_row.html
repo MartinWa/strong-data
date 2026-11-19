@@ -1,0 +1,9 @@
+{% load formatting %}
+<tr>
+  <td class="nowrap">{{ session.date|isodate }}</td>
+  <td>{{ session.workout_name }}</td>
+  <td class="muted secondary">{{ session.program }}</td>
+  <td class="num">{{ session.set_count|num }}</td>
+  <td class="num secondary">{{ session.total_volume_kg|num }}</td>
+  <td class="num secondary">{{ session.duration_min|num }}</td>
+</tr>

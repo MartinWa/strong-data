@@ -1,10 +1,13 @@
 {% extends "base.html" %}
-{% load formatting %}
+{% load assets formatting %}
 {% block title %}Preview — strong-data{% endblock %}
+{% block scripts %}
+<script src="{% asset 'workouts/submit-once.js' %}" defer></script>
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>Preview import</h1>
-  <p class="lede">Nothing has been written yet. Confirming replaces everything currently stored for your account.</p>
+  <p class="lede">Nothing has been written yet. Check the summary and the warnings, then confirm at the bottom of the page.</p>
 </div>
 
 <div class="stat-grid">
@@ -22,22 +25,32 @@
   </div>
   <div class="stat">
     <span class="stat-label">Warnings</span>
-    <span class="stat-value">{{ summary.warnings|length }}{% if summary.hidden_warnings %}+{% endif %}</span>
+    <span class="stat-value">{{ summary.warning_total }}</span>
   </div>
 </div>
 
-{% if summary.warnings %}
+{% if summary.warning_total %}
 <div class="card">
   <div class="card-head">
     <h2>Warnings</h2>
-    <span class="badge badge-danger">{{ summary.warnings|length }} shown</span>
+    <span class="badge badge-warning">{{ summary.warning_total }} row{{ summary.warning_total|pluralize }}</span>
   </div>
-  <ul class="warnings">
-    {% for warning in summary.warnings %}<li>{{ warning }}</li>{% endfor %}
+  <p class="muted small">These rows were adjusted or skipped. The rest of the file still imports.</p>
+  <ul class="warning-groups">
+    {% for group in summary.warning_groups %}
+    <li class="warning-group">
+      <details>
+        <summary>
+          <span class="badge badge-warning">{{ group.count }} row{{ group.count|pluralize }}</span>
+          <span>{{ group.message }}</span>
+        </summary>
+        {% if group.rows %}
+        <p class="warning-lines">CSV line{{ group.rows|length|pluralize }} {{ group.rows|join:", " }}{% if group.hidden_rows %}, and {{ group.hidden_rows }} more{% endif %}</p>
+        {% endif %}
+      </details>
+    </li>
+    {% endfor %}
   </ul>
-  {% if summary.hidden_warnings %}
-  <p class="muted small" style="margin-top: 0.75rem;">… and {{ summary.hidden_warnings }} more warnings.</p>
-  {% endif %}
 </div>
 {% endif %}
 
@@ -46,32 +59,40 @@
     <h2>Sessions</h2>
     <span class="badge">{{ summary.sessions|length }}</span>
   </div>
+  {% if summary.sessions|length > 10 %}
+  <p class="muted small">Showing the first 10 of {{ summary.sessions|length }} sessions.</p>
+  {% endif %}
   <div class="table-wrap">
     <table class="table">
+      <caption class="visually-hidden">Sessions in this export</caption>
       <thead>
-        <tr>
-          <th scope="col">Date</th>
-          <th scope="col">Workout</th>
-          <th scope="col">Program</th>
-          <th scope="col" class="num">Sets</th>
-          <th scope="col" class="num">Volume (kg)</th>
-          <th scope="col" class="num">Duration (min)</th>
-        </tr>
+        {% include "workouts/partials/preview_session_head.html" %}
       </thead>
       <tbody>
-        {% for session in summary.sessions %}
-        <tr>
-          <td>{{ session.date|isodate }}</td>
-          <td>{{ session.workout_name }}</td>
-          <td class="muted">{{ session.program }}</td>
-          <td class="num">{{ session.set_count|num }}</td>
-          <td class="num">{{ session.total_volume_kg|num }}</td>
-          <td class="num">{{ session.duration_min|num }}</td>
-        </tr>
+        {% for session in summary.sessions|slice:":10" %}
+        {% include "workouts/partials/preview_session_row.html" %}
         {% endfor %}
       </tbody>
     </table>
   </div>
+  {% if summary.sessions|length > 10 %}
+  <details class="show-all">
+    <summary>Show all {{ summary.sessions|length }} sessions</summary>
+    <div class="table-wrap">
+      <table class="table">
+        <caption class="visually-hidden">Remaining sessions in this export</caption>
+        <thead>
+          {% include "workouts/partials/preview_session_head.html" %}
+        </thead>
+        <tbody>
+          {% for session in summary.sessions %}{% if forloop.counter > 10 %}
+          {% include "workouts/partials/preview_session_row.html" %}
+          {% endif %}{% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
 </div>
 
 <div class="card">
@@ -82,29 +103,30 @@
   <p class="muted small">The first {{ summary.sample_sets|length }} of {{ summary.total_sets }} sets. Confirming imports all of them.</p>
   <div class="table-wrap">
     <table class="table">
+      <caption class="visually-hidden">Sample sets in this export</caption>
       <thead>
         <tr>
-          <th scope="col">Time</th>
+          <th scope="col" class="nowrap secondary">Time</th>
           <th scope="col">Exercise</th>
-          <th scope="col" class="num">Order</th>
+          <th scope="col" class="num">Set</th>
           <th scope="col" class="num">Weight (kg)</th>
           <th scope="col" class="num">Reps</th>
-          <th scope="col" class="num">RPE</th>
-          <th scope="col" class="num">Volume (kg)</th>
-          <th scope="col" class="num">1RM (kg)</th>
+          <th scope="col" class="num secondary">RPE</th>
+          <th scope="col" class="num secondary">Volume (kg)</th>
+          <th scope="col" class="num secondary">1RM (kg)</th>
         </tr>
       </thead>
       <tbody>
         {% for item in summary.sample_sets %}
         <tr>
-          <td class="muted">{{ item.set_time|isodate }}</td>
+          <td class="muted nowrap secondary">{{ item.set_time|isominute }}</td>
           <td>{{ item.exercise_name }}</td>
           <td class="num">{{ item.set_order|num }}</td>
           <td class="num">{{ item.weight_kg|num }}</td>
           <td class="num">{{ item.reps|num }}</td>
-          <td class="num">{{ item.rpe|num }}</td>
-          <td class="num">{{ item.volume_kg|num }}</td>
-          <td class="num">{{ item.est_1rm_kg|num }}</td>
+          <td class="num secondary">{{ item.rpe|num }}</td>
+          <td class="num secondary">{{ item.volume_kg|num }}</td>
+          <td class="num secondary">{{ item.est_1rm_kg|num }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -112,17 +134,21 @@
   </div>
 </div>
 
-<div class="card">
-  <div class="notice notice-warn">
-    <strong>This replaces your current data.</strong>
-    Confirming replaces all sessions, sets and exercises currently stored for your account.
-    Muscle-group corrections are kept.
+<div class="card action-bar">
+  <div class="action-summary">
+    {% if current_sessions %}
+    <strong>Confirming replaces {{ current_sessions }} session{{ current_sessions|pluralize }}{% if current_sets %} and {{ current_sets }} set{{ current_sets|pluralize }}{% endif %} currently stored.</strong>
+    <span class="muted small">Muscle-group corrections are kept.</span>
+    {% else %}
+    <strong>This is your first import.</strong>
+    <span class="muted small">Nothing is stored for your account yet, so nothing will be replaced.</span>
+    {% endif %}
   </div>
   <form method="post" class="actions">
     {% csrf_token %}
     <input type="hidden" name="import_id" value="{{ import_id }}">
     <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
-    <button class="btn btn-primary" type="submit">Confirm import</button>
+    <button class="btn btn-primary" type="submit" data-submit-once>Confirm import</button>
     <a class="btn btn-ghost" href="{% url 'upload' %}">Cancel</a>
   </form>
 </div>

@@ -119,4 +119,38 @@ def test_summarize_caps_the_sample_and_reports_the_total():
 
     assert len(summary["sample_sets"]) == pending.SAMPLE_SET_LIMIT
     assert summary["total_sets"] == 30
-    assert summary["hidden_warnings"] == 0
+    assert summary["warning_total"] == 0
+    assert summary["warning_groups"] == []
+
+
+def test_summarize_groups_warnings_by_cause_with_counts():
+    rows = [
+        f"2026-01-05 09:{minute:02d}:00,Push Day,54m,Exercise {minute:02d},1,80,5,0,0,{rpe}"
+        for minute, rpe in enumerate(["8", "8", "99", "8", "2"])
+    ]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert summary["warning_total"] == 2
+    assert [group["message"] for group in summary["warning_groups"]] == [
+        "invalid RPE; stored as null"
+    ]
+    assert summary["warning_groups"][0]["count"] == 2
+    assert summary["warning_groups"][0]["rows"] == [4, 6]
+    assert summary["warning_groups"][0]["hidden_rows"] == 0
+
+
+def test_summarize_counts_every_warning_but_caps_the_listed_lines():
+    rows = [
+        f"2026-01-05 09:{minute:02d}:00,Push Day,54m,Exercise {minute:02d},1,80,5,0,0,99"
+        for minute in range(30)
+    ]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+    group = summary["warning_groups"][0]
+
+    assert summary["warning_total"] == 30
+    assert group["count"] == 30
+    assert len(group["rows"]) == pending.WARNING_ROW_LIMIT
+    assert group["rows"][0] == 2
+    assert group["hidden_rows"] == 30 - pending.WARNING_ROW_LIMIT

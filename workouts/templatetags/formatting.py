@@ -47,6 +47,18 @@ def kg(value):
 
 
 @register.filter
+def isominute(value):
+    if not value:
+        return DASH
+    if isinstance(value, datetime):
+        return value.strftime("%Y-%m-%d %H:%M")
+    try:
+        return datetime.fromisoformat(str(value)).strftime("%Y-%m-%d %H:%M")
+    except ValueError:
+        return str(value)
+
+
+@register.filter
 def isodate(value, style="auto"):
     if not value:
         return DASH

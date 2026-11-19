@@ -7,21 +7,27 @@
 </div>
 
 <div class="card">
-  <div class="notice notice-warn">
-    <strong>Confirming replaces your data.</strong>
-    An import replaces all sessions, sets and exercises already stored for your account.
-    Muscle-group corrections are kept.
+  {% if not has_sessions %}
+  <div class="notice">
+    <strong>This is your first import.</strong>
+    Nothing is stored for your account yet, so nothing will be replaced.
   </div>
-  {% if too_large %}
-  <div class="msg msg-error">CSV export must be 10 MB or smaller.</div>
   {% endif %}
   <form method="post" enctype="multipart/form-data" class="form">
     {% csrf_token %}
-    {% include "partials/field.html" with field=form.csv_file %}
+    {% include "partials/field.html" with field=form.csv_file force_invalid=too_large %}
     <div class="actions">
       <button class="btn btn-primary" type="submit">Preview</button>
-      <span class="muted small">Strong export, up to 10 MB.</span>
     </div>
   </form>
+
+  <details class="export-help">
+    <summary>How to export from Strong</summary>
+    <ol>
+      <li>Open the Strong app and go to your profile or its settings screen.</li>
+      <li>Choose <em>Export workouts</em> (some versions label it <em>Export data</em>).</li>
+      <li>Save the CSV file, then choose it above and press <em>Preview</em>.</li>
+    </ol>
+  </details>
 </div>
 {% endblock %}

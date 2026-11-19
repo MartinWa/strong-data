@@ -2,7 +2,7 @@ from datetime import date, datetime
 
 import pytest
 
-from workouts.templatetags.formatting import isodate, kg, num
+from workouts.templatetags.formatting import isodate, isominute, kg, num
 
 
 @pytest.mark.parametrize(
@@ -45,3 +45,10 @@ def test_isodate_renders_iso_and_dashes_missing_values():
 
 def test_isodate_can_drop_the_time():
     assert isodate(datetime(2026, 1, 5, 9, 0), "day") == "2026-01-05"
+
+
+def test_isominute_drops_seconds_from_datetimes_and_strings():
+    assert isominute(datetime(2026, 1, 5, 9, 0, 30)) == "2026-01-05 09:00"
+    assert isominute("2026-01-05 09:00:30") == "2026-01-05 09:00"
+    assert isominute("2026-01-05") == "2026-01-05 00:00"
+    assert isominute(None) == "—"

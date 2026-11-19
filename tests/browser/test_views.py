@@ -569,6 +569,8 @@ def test_oversized_upload_is_rejected_before_the_file_is_read(client):
 
     assert response.status_code == 200
     assert b"CSV export must be 10 MB or smaller." in response.content
+    assert 'class="field field-invalid"' in response.content.decode()
+    assert "How to export from Strong" in response.content.decode()
 
 
 @pytest.mark.django_db
