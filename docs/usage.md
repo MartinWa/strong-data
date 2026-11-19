@@ -71,8 +71,11 @@ records.
 
 `/sessions/` lists your sessions newest first. Each row is collapsed to the date,
 workout name, program and totals; open it to see the sets with weight, reps, RPE,
-volume and estimated 1RM. It shows what is currently stored, so after a
-replacement import it shows only the new export.
+volume and estimated 1RM. Sets are grouped per exercise, with the number of sets
+and a set number that restarts at 1 for each exercise, so a lift performed in
+several blocks reads as one group instead of duplicate rows. The program is only
+shown when it differs from the workout name. It shows what is currently stored,
+so after a replacement import it shows only the new export.
 
 Three filters narrow the list: a free-text search matching the workout name or an
 exercise name, a program dropdown, and an optional date range. Filters combine,
@@ -88,6 +91,12 @@ fold scripts, so a hiragana query does not find a katakana exercise name.
 
 `/history/` permanently redirects to `/sessions/`, keeping any query string, so
 an old `/history/?page=2` bookmark still lands on the same page.
+
+*Delete all sessions* at the bottom of the page removes every session and set
+stored for your account after a second confirmation click. Muscle-group
+corrections and API tokens are kept, so a later import reuses your corrections
+instead of re-guessing them. There is nothing to export from the app: the Strong
+CSV you imported is the export, and sending it again reproduces the data.
 
 ## Muscle groups
 

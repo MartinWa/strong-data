@@ -17,7 +17,7 @@ from parsing import InvalidCSVError, parse_workouts
 
 from . import pending
 from .forms import MUSCLE_CHOICES, MuscleGroupForm, TokenForm, UploadForm
-from .models import ApiToken, ExerciseMeta, WorkoutSession
+from .models import ApiToken, ExerciseMeta, WorkoutSession, WorkoutSet
 from .services import EmptyImportError, import_workouts_csv
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -171,6 +171,7 @@ def sessions(request):
             "page": page,
             "has_data": has_data,
             "filtered": filtered,
+            "total_sessions": owned.count(),
             "programs": owned.values_list("program", flat=True).distinct().order_by("program"),
             "selected_program": program,
             "query": query,
@@ -178,6 +179,22 @@ def sessions(request):
             "date_to": date_to.isoformat() if date_to else "",
         },
     )
+
+
+@login_required
+@require_POST
+def delete_sessions(request):
+    owned = WorkoutSession.objects.filter(owner=request.user)
+    session_total = owned.count()
+    set_total = WorkoutSet.objects.filter(owner=request.user).count()
+    with transaction.atomic():
+        owned.delete()
+    messages.success(
+        request,
+        f"Deleted {session_total} session{'' if session_total == 1 else 's'} "
+        f"and {set_total} set{'' if set_total == 1 else 's'}.",
+    )
+    return redirect("sessions")
 
 
 @login_required
