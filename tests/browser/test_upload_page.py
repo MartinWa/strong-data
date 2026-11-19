@@ -52,19 +52,19 @@ def upload(client, text=MINIMAL):
 
 
 @pytest.mark.django_db
-def test_upload_page_reassures_a_first_run_instead_of_warning_about_replacement(client):
+def test_upload_page_says_nothing_about_replacing_on_a_first_run(client):
     signed_in(client)
 
     content = client.get(reverse("upload")).content.decode()
 
-    assert "This is your first import." in content
-    assert "nothing will be replaced" in content
+    assert "This is your first import." not in content
+    assert "nothing will be replaced" not in content
     assert "An import replaces" not in content
     assert "Confirming replaces your data" not in content
 
 
 @pytest.mark.django_db
-def test_upload_page_drops_the_replace_warning_once_sessions_exist(client):
+def test_upload_page_says_nothing_about_replacing_once_sessions_exist(client):
     user = signed_in(client)
     import_workouts_csv(user, TWO_SESSIONS)
 

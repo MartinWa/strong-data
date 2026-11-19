@@ -56,11 +56,7 @@ def _render_upload(request, form, too_large=None):
     return render(
         request,
         "workouts/upload.html",
-        {
-            "form": form,
-            "too_large": too_large,
-            "has_sessions": WorkoutSession.objects.filter(owner=request.user).exists(),
-        },
+        {"form": form, "too_large": too_large},
     )
 
 

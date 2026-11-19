@@ -28,13 +28,16 @@ available at the point of use.
    *Preview*. The file must be a Strong export with the `Date`, `Workout Name`,
    `Exercise Name`, `Set Order`, `Weight` and `Reps` headers, and at most 10 MB.
    Extra columns are ignored; `Duration`, `Distance`, `Seconds` and `RPE` are used
-   when present. On a new account the page says this is the first import; once
-   data exists, the replace warning appears on the preview page instead.
+   when present. Nothing on this page talks about replacement: the import is only
+   described once, on the preview page.
 2. **Preview** (`/preview/`) — review the session summary (date, workout,
    program, set count, volume, duration), the first 20 sets as a sample, and any
    warnings, then press *Confirm import*. The summary covers every session; only
    the set table is sampled, and confirming imports all sets. Sessions beyond the
-   first 10 are behind *Show all* so the confirm bar stays in reach.
+   first 10 are behind *Show all* so the confirm bar stays in reach. The sticky
+   bar at the bottom states what confirming replaces (`Confirming replaces 14
+   sessions and 99 sets currently stored.`) or, on an empty account, that this is
+   the first import.
 3. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 sessions
    per page. Each row expands to show its sets.
 
