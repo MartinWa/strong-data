@@ -100,14 +100,13 @@
     <h2>Sample sets</h2>
     <span class="badge">{{ summary.sample_set_count }} of {{ summary.total_sets }}</span>
   </div>
-  <p class="muted small">The first {{ summary.sample_set_count }} of {{ summary.total_sets }} sets, newest session first. Confirming imports all of them.</p>
+  <p class="muted small">The first {{ summary.sample_set_count }} of {{ summary.total_sets }} sets, newest session first and grouped by exercise. Confirming imports all of them.</p>
   <div class="table-wrap">
     <table class="table">
       <caption class="visually-hidden">Sample sets in this export</caption>
       <thead>
         <tr>
           <th scope="col" class="nowrap secondary">Time</th>
-          <th scope="col">Exercise</th>
           <th scope="col" class="num">Set</th>
           <th scope="col" class="num">Weight (kg)</th>
           <th scope="col" class="num">Reps</th>
@@ -116,15 +115,14 @@
           <th scope="col" class="num secondary">1RM (kg)</th>
         </tr>
       </thead>
-      {% for group in summary.sample_sessions %}
+      {% for group in summary.sample_groups %}
       <tbody>
         <tr class="sample-group">
-          <th scope="rowgroup" colspan="8">{{ group.date|isodate }} <span class="sample-group-workout">{{ group.workout_name }}</span></th>
+          <th scope="rowgroup" colspan="7">{% if group.starts_session %}<span class="sample-group-session">{{ group.session_date|isodate }} {{ group.workout_name }}</span> {% endif %}{{ group.exercise_name }} <span class="set-group-count">{{ group.set_count }} set{{ group.set_count|pluralize }}{% if group.hidden_sets %}, {{ group.hidden_sets }} more{% endif %}</span></th>
         </tr>
         {% for item in group.sets %}
         <tr>
           <td class="muted nowrap secondary">{{ item.set_time|isominute }}</td>
-          <td>{{ item.exercise_name }}</td>
           <td class="num">{{ item.set_order|num }}</td>
           <td class="num">{{ item.weight_kg|num }}</td>
           <td class="num">{{ item.reps|num }}</td>

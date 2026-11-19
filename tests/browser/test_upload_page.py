@@ -215,23 +215,28 @@ def test_preview_lists_sessions_newest_first_like_the_sessions_page(client):
     sample = content[content.index("Sample sets") :]
     assert sample.index("Barbell Row") < sample.index("Chest Fly")
     assert "2026-02-10 18:00" in sample
-    assert sample.count('class="sample-group"') == 2
+    assert sample.count('class="sample-group"') == 3
 
 
 @pytest.mark.django_db
-def test_preview_sample_sets_are_split_by_session(client):
+def test_preview_sample_sets_are_grouped_by_exercise(client):
     signed_in(client)
 
     upload(client, TWO_SESSIONS)
     content = client.get(reverse("preview")).content.decode()
     sample = content[content.index("Sample sets") :]
-    dividers = [part.split("</tr>")[0] for part in sample.split('class="sample-group"')[1:]]
+    groups = [part.split("</tr>")[0] for part in sample.split('class="sample-group"')[1:]]
 
-    assert len(dividers) == 2
-    assert "2026-02-10" in dividers[0]
-    assert "Pull Day" in dividers[0]
-    assert "2026-01-05" in dividers[1]
-    assert "Push Day" in dividers[1]
+    assert len(groups) == 3
+    assert "2026-02-10" in groups[0]
+    assert "Pull Day" in groups[0]
+    assert "Barbell Row" in groups[0]
+    assert "2026-01-05" in groups[1]
+    assert "Push Day" in groups[1]
+    assert "Bench Press" in groups[1]
+    assert "Chest Fly" in groups[2]
+    assert "2026-01-05" not in groups[2]
+    assert '<th scope="col">Exercise</th>' not in sample
 
 
 @pytest.mark.django_db

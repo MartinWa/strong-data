@@ -38,8 +38,9 @@ available at the point of use.
    program, set count, volume, duration), the first 20 sets as a sample, and any
    warnings, then press *Confirm import*. Both tables are newest first, like the
    Sessions page, so the newest session is the first row and the sample starts
-   with its sets. The sample is split into one block per session, each headed by
-   the date and workout name, so a sample that spans two workouts is not
+   with its sets. The sample is grouped by exercise, each group headed by the
+   exercise name and its set count; the date and workout name label the first
+   group of each session, so a sample that runs into an older workout is not
    ambiguous. The summary covers every session; only the set table is
    sampled, and confirming imports all sets. Sessions beyond the first 10 are
    behind *Show all* so the confirm bar stays in reach. The sticky

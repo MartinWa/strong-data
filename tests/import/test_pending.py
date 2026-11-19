@@ -36,7 +36,7 @@ def test_save_round_trips_the_csv_and_summary(pending_root):
     assert pending.load_csv(IMPORT_ID) == SAMPLE
     assert summary["total_sets"] == 2
     assert summary["sessions"][0]["workout_name"] == "Push Day"
-    assert summary["sample_sessions"][0]["sets"][0]["exercise_name"] == "Bench Press (Barbell)"
+    assert summary["sample_groups"][0]["exercise_name"] == "Bench Press (Barbell)"
 
 
 @pytest.mark.skipif(os.name != "posix", reason="POSIX file modes")
@@ -125,20 +125,37 @@ def test_summarize_caps_the_sample_and_reports_the_total():
 
 def test_summarize_caps_the_sample_across_sessions_and_keeps_the_partial_group():
     rows = []
-    for day, name in (("05", "Push Day"), ("06", "Pull Day")):
+    for day in ("05", "06"):
         for minute in range(15):
-            rows.append(
-                f"2026-02-{day} 09:{minute:02d}:00,{name},54m,Exercise {minute:02d},1,80,5,0,0,8"
-            )
+            rows.append(f"2026-02-{day} 09:{minute:02d}:00,Push Day,54m,Bench Press,1,80,5,0,0,8")
 
     summary = pending.summarize(parse_workouts(csv_text(*rows)))
 
     assert summary["sample_set_count"] == pending.SAMPLE_SET_LIMIT
-    assert [len(group["sets"]) for group in summary["sample_sessions"]] == [15, 5]
-    assert [group["date"] for group in summary["sample_sessions"]] == [
+    assert [group["set_count"] for group in summary["sample_groups"]] == [15, 5]
+    assert [group["hidden_sets"] for group in summary["sample_groups"]] == [0, 10]
+    assert [group["session_date"] for group in summary["sample_groups"]] == [
         "2026-02-06",
         "2026-02-05",
     ]
+
+
+def test_summarize_groups_the_sample_by_exercise_in_first_seen_order():
+    rows = [
+        "2026-01-05 09:00:00,Push Day,54m,Bench Press,1,80,5,0,0,8",
+        "2026-01-05 09:05:00,Push Day,54m,Incline Press,1,60,8,0,0,8",
+        "2026-01-05 09:10:00,Push Day,54m,Bench Press,2,80,5,0,0,8",
+    ]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert [group["exercise_name"] for group in summary["sample_groups"]] == [
+        "Bench Press",
+        "Incline Press",
+    ]
+    assert [group["set_count"] for group in summary["sample_groups"]] == [2, 1]
+    assert [item["set_order"] for item in summary["sample_groups"][0]["sets"]] == [1, 2]
+    assert [group["starts_session"] for group in summary["sample_groups"]] == [True, False]
 
 
 def test_summarize_orders_sessions_newest_first_like_the_sessions_page():
@@ -159,13 +176,21 @@ def test_summarize_orders_sessions_newest_first_like_the_sessions_page():
         "Push Day",
         "Legs Day",
     ]
-    assert [group["workout_name"] for group in summary["sample_sessions"]] == [
-        "Pull Day",
-        "Push Day",
-        "Legs Day",
+    assert [group["exercise_name"] for group in summary["sample_groups"]] == [
+        "Barbell Row",
+        "Bench Press (Barbell)",
+        "Back Squat",
     ]
-    assert summary["sample_sessions"][0]["sets"][0]["exercise_name"] == "Barbell Row"
-    assert summary["sample_sessions"][0]["date"] == "2026-02-10"
+    assert [group["session_date"] for group in summary["sample_groups"]] == [
+        "2026-02-10",
+        "2026-01-05",
+        "2026-01-05",
+    ]
+    assert [group["starts_session"] for group in summary["sample_groups"]] == [
+        True,
+        True,
+        True,
+    ]
     assert summary["sample_set_count"] == 3
 
 

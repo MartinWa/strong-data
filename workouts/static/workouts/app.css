@@ -1022,10 +1022,13 @@ input[type="file"]::file-selector-button:hover {
   border-top: 0;
 }
 
-.sample-group-workout {
-  margin-left: 0.5rem;
+.sample-group-session {
+  margin-right: 0.6rem;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
   color: var(--muted);
-  font-size: 0.82rem;
+  font-size: 0.78rem;
   font-weight: 400;
 }
 

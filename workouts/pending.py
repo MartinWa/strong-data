@@ -131,19 +131,21 @@ def summarize(parsed: ParsedWorkouts) -> dict:
         }
         for session in ordered_sessions
     ]
-    sample_sessions = []
+    sample_groups = []
     sample_set_count = 0
     for session in ordered_sessions:
         if sample_set_count >= SAMPLE_SET_LIMIT:
             break
-        sets = []
+        totals: dict[str, int] = {}
+        for item in session.sets:
+            totals[item.exercise_name] = totals.get(item.exercise_name, 0) + 1
+        buckets: dict[str, list[dict]] = {}
         for item in session.sets:
             if sample_set_count >= SAMPLE_SET_LIMIT:
                 break
-            sets.append(
+            buckets.setdefault(item.exercise_name, []).append(
                 {
                     "set_time": item.set_time.isoformat(sep=" "),
-                    "exercise_name": item.exercise_name,
                     "set_order": item.set_order,
                     "weight_kg": None if item.weight_kg is None else str(item.weight_kg),
                     "reps": item.reps,
@@ -155,11 +157,15 @@ def summarize(parsed: ParsedWorkouts) -> dict:
                 }
             )
             sample_set_count += 1
-        if sets:
-            sample_sessions.append(
+        for position, (exercise_name, sets) in enumerate(buckets.items()):
+            sample_groups.append(
                 {
-                    "date": session.session_date.isoformat(),
+                    "session_date": session.session_date.isoformat(),
                     "workout_name": session.workout_name,
+                    "starts_session": position == 0,
+                    "exercise_name": exercise_name,
+                    "set_count": len(sets),
+                    "hidden_sets": totals[exercise_name] - len(sets),
                     "sets": sets,
                 }
             )
@@ -169,7 +175,7 @@ def summarize(parsed: ParsedWorkouts) -> dict:
         "exercises": list(parsed.exercises),
         "warning_total": len(warnings),
         "warning_groups": group_warnings(warnings),
-        "sample_sessions": sample_sessions,
+        "sample_groups": sample_groups,
         "sample_set_count": sample_set_count,
         "total_sets": sum(session.set_count for session in parsed.sessions),
     }
