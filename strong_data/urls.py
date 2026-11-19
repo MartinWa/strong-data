@@ -5,6 +5,9 @@ from django.urls import include, path
 from api.urls import api
 from strong_data.views import LoginView, release_status
 
+handler404 = "strong_data.views.not_found"
+handler500 = "strong_data.views.server_error"
+
 _api_patterns, _api_app_name, _api_namespace = api.urls
 
 urlpatterns = [

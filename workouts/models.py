@@ -76,6 +76,16 @@ class WorkoutSession(models.Model):
     def __str__(self):
         return f"{self.session_date} {self.workout_name}"
 
+    def sets_by_exercise(self):
+        groups = []
+        positions = {}
+        for item in self.sets.all():
+            position = positions.setdefault(item.exercise_id, len(groups))
+            if position == len(groups):
+                groups.append({"exercise": item.exercise, "sets": []})
+            groups[position]["sets"].append(item)
+        return groups
+
 
 class WorkoutSet(models.Model):
     owner = models.ForeignKey(

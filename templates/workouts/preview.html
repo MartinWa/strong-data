@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% load formatting %}
 {% block title %}Preview — strong-data{% endblock %}
 {% block content %}
 <div class="page-head">
@@ -49,23 +50,23 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Date</th>
-          <th>Workout</th>
-          <th>Program</th>
-          <th class="num">Sets</th>
-          <th class="num">Volume (kg)</th>
-          <th class="num">Duration (min)</th>
+          <th scope="col">Date</th>
+          <th scope="col">Workout</th>
+          <th scope="col">Program</th>
+          <th scope="col" class="num">Sets</th>
+          <th scope="col" class="num">Volume (kg)</th>
+          <th scope="col" class="num">Duration (min)</th>
         </tr>
       </thead>
       <tbody>
         {% for session in summary.sessions %}
         <tr>
-          <td>{{ session.date }}</td>
+          <td>{{ session.date|isodate }}</td>
           <td>{{ session.workout_name }}</td>
           <td class="muted">{{ session.program }}</td>
-          <td class="num">{{ session.set_count }}</td>
-          <td class="num">{{ session.total_volume_kg }}</td>
-          <td class="num">{{ session.duration_min|default_if_none:"—" }}</td>
+          <td class="num">{{ session.set_count|num }}</td>
+          <td class="num">{{ session.total_volume_kg|num }}</td>
+          <td class="num">{{ session.duration_min|num }}</td>
         </tr>
         {% endfor %}
       </tbody>
@@ -83,27 +84,27 @@
     <table class="table">
       <thead>
         <tr>
-          <th>Time</th>
-          <th>Exercise</th>
-          <th class="num">Order</th>
-          <th class="num">Weight</th>
-          <th class="num">Reps</th>
-          <th class="num">RPE</th>
-          <th class="num">Volume</th>
-          <th class="num">1RM</th>
+          <th scope="col">Time</th>
+          <th scope="col">Exercise</th>
+          <th scope="col" class="num">Order</th>
+          <th scope="col" class="num">Weight (kg)</th>
+          <th scope="col" class="num">Reps</th>
+          <th scope="col" class="num">RPE</th>
+          <th scope="col" class="num">Volume (kg)</th>
+          <th scope="col" class="num">1RM (kg)</th>
         </tr>
       </thead>
       <tbody>
         {% for item in summary.sample_sets %}
         <tr>
-          <td class="muted">{{ item.set_time }}</td>
+          <td class="muted">{{ item.set_time|isodate }}</td>
           <td>{{ item.exercise_name }}</td>
-          <td class="num">{{ item.set_order }}</td>
-          <td class="num">{{ item.weight_kg|default_if_none:"—" }}</td>
-          <td class="num">{{ item.reps }}</td>
-          <td class="num">{{ item.rpe|default_if_none:"—" }}</td>
-          <td class="num">{{ item.volume_kg }}</td>
-          <td class="num">{{ item.est_1rm_kg|default_if_none:"—" }}</td>
+          <td class="num">{{ item.set_order|num }}</td>
+          <td class="num">{{ item.weight_kg|num }}</td>
+          <td class="num">{{ item.reps|num }}</td>
+          <td class="num">{{ item.rpe|num }}</td>
+          <td class="num">{{ item.volume_kg|num }}</td>
+          <td class="num">{{ item.est_1rm_kg|num }}</td>
         </tr>
         {% endfor %}
       </tbody>

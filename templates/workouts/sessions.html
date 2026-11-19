@@ -1,19 +1,20 @@
 {% extends "base.html" %}
-{% load assets %}
+{% load assets formatting %}
 {% block title %}Sessions — strong-data{% endblock %}
-{% block scripts %}<script src="{% asset 'workouts/filters.js' %}" defer></script>{% endblock %}
+{% block scripts %}
+<script src="{% asset 'workouts/filters.js' %}" defer></script>
+<script src="{% asset 'workouts/delete.js' %}" defer></script>
+{% endblock %}
 {% block content %}
 <div class="page-head">
   <h1>Sessions</h1>
+  {% if page.paginator.count %}
   <p class="lede">
-    {% if page.paginator.count %}
     {{ page.paginator.count }} session{{ page.paginator.count|pluralize }}{% if filtered %} matching your filters{% else %} stored for your account{% endif %}.
-    {% elif has_data %}
-    No sessions match these filters.
-    {% else %}
-    No sessions yet. Upload a Strong CSV export to see your workouts here.
-    {% endif %}
   </p>
+  {% elif has_data %}
+  <p class="lede">No sessions match these filters.</p>
+  {% endif %}
 </div>
 
 {% if has_data %}
@@ -63,40 +64,51 @@
 <details class="card session">
   <summary class="session-head">
     <span class="session-heading">
-      <span class="session-date">{{ session.session_date|date:"j M Y" }}</span>
+      <span class="session-date"><time datetime="{{ session.session_date|isodate }}">{{ session.session_date|isodate }}</time></span>
       <span class="session-title">{{ session.workout_name }}</span>
+      {% if session.program and session.program != session.workout_name %}
       <span class="meta">Program {{ session.program }}</span>
+      {% endif %}
     </span>
     <span class="session-stats">
       <span class="badge">{{ session.set_count }} set{{ session.set_count|pluralize }}</span>
-      <span class="badge">{{ session.total_volume_kg|floatformat:"-2" }} kg</span>
+      <span class="badge">{{ session.total_volume_kg|kg }}</span>
       {% if session.duration_min %}<span class="badge">{{ session.duration_min }} min</span>{% endif %}
     </span>
   </summary>
   <div class="table-wrap">
     <table class="table">
+      <caption class="visually-hidden">{{ session.workout_name }} on {{ session.session_date|isodate }}: {{ session.set_count }} set{{ session.set_count|pluralize }}</caption>
       <thead>
         <tr>
-          <th>Exercise</th>
-          <th class="num">Weight</th>
-          <th class="num">Reps</th>
-          <th class="num">RPE</th>
-          <th class="num">Volume</th>
-          <th class="num">Est. 1RM</th>
+          <th scope="col" class="num">Set</th>
+          <th scope="col" class="num">Weight (kg)</th>
+          <th scope="col" class="num">Reps</th>
+          <th scope="col" class="num">RPE</th>
+          <th scope="col" class="num">Volume (kg)</th>
+          <th scope="col" class="num">Est. 1RM (kg)</th>
         </tr>
       </thead>
+      {% for group in session.sets_by_exercise %}
       <tbody>
-        {% for item in session.sets.all %}
+        <tr class="set-group">
+          <th scope="rowgroup" colspan="6">
+            {{ group.exercise.name }}
+            <span class="set-group-count">{{ group.sets|length }} set{{ group.sets|length|pluralize }}</span>
+          </th>
+        </tr>
+        {% for item in group.sets %}
         <tr>
-          <td>{{ item.exercise.name }}</td>
-          <td class="num">{{ item.weight_kg|default_if_none:"—" }}</td>
-          <td class="num">{{ item.reps }}</td>
-          <td class="num">{{ item.rpe|default_if_none:"—" }}</td>
-          <td class="num">{{ item.volume_kg }}</td>
-          <td class="num">{{ item.est_1rm_kg|default_if_none:"—" }}</td>
+          <td class="num">{{ forloop.counter }}</td>
+          <td class="num">{{ item.weight_kg|num }}</td>
+          <td class="num">{{ item.reps|num }}</td>
+          <td class="num">{{ item.rpe|num }}</td>
+          <td class="num">{{ item.volume_kg|num }}</td>
+          <td class="num">{{ item.est_1rm_kg|num }}</td>
         </tr>
         {% endfor %}
       </tbody>
+      {% endfor %}
     </table>
   </div>
 </details>
@@ -105,16 +117,36 @@
 {% if page.has_other_pages %}
 <nav class="pager" aria-label="Pagination">
   {% if page.has_previous %}
-  <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}">Newer</a>
+  <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}">Previous</a>
   {% else %}
-  <span class="btn btn-sm" aria-disabled="true" style="opacity: 0.45;">Newer</span>
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Previous</a>
   {% endif %}
   <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
   {% if page.has_next %}
-  <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}">Older</a>
+  <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}">Next</a>
   {% else %}
-  <span class="btn btn-sm" aria-disabled="true" style="opacity: 0.45;">Older</span>
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Next</a>
   {% endif %}
 </nav>
+{% endif %}
+
+{% if total_sessions %}
+<div class="danger-zone" data-delete-zone>
+  <div>
+    <h2>Delete all sessions</h2>
+    <p class="muted small">
+      Removes all {{ total_sessions }} session{{ total_sessions|pluralize }} and their sets.
+      Muscle-group corrections and API tokens are kept.
+    </p>
+  </div>
+  {% if request.GET.delete != "1" %}
+  <a class="btn btn-danger" href="?delete=1" data-delete-start>Delete all sessions</a>
+  {% endif %}
+  <form class="danger-confirm" method="post" action="{% url 'delete_sessions' %}"{% if request.GET.delete != "1" %} hidden{% endif %} data-delete-form>
+    {% csrf_token %}
+    <button class="btn btn-danger" type="submit">Really delete {{ total_sessions }} session{{ total_sessions|pluralize }}</button>
+    <a class="btn btn-ghost" href="{% url 'sessions' %}">Cancel</a>
+  </form>
+</div>
 {% endif %}
 {% endblock %}

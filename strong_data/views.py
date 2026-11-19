@@ -1,8 +1,12 @@
 from django.contrib.auth import views as auth_views
-from django.http import JsonResponse
+from django.contrib.auth.models import AnonymousUser
+from django.http import HttpResponse, JsonResponse
+from django.shortcuts import render
+from django.template.loader import render_to_string
 from django.views.decorators.cache import never_cache
 from django.views.decorators.http import require_GET
 
+from .context_processors import app_info
 from .forms import LoginForm
 from .releases import update_available
 
@@ -23,3 +27,12 @@ class LoginView(auth_views.LoginView):
 @never_cache
 def release_status(request):
     return JsonResponse({"update_available": update_available()})
+
+
+def not_found(request, exception):
+    return render(request, "404.html", status=404)
+
+
+def server_error(request):
+    context = {**app_info(None), "user": AnonymousUser()}
+    return HttpResponse(render_to_string("500.html", context), status=500)

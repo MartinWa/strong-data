@@ -284,6 +284,24 @@ main.container {
   border: 0;
 }
 
+.skip-link {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  padding: 0.6rem 1rem;
+  border-radius: 0 0 0.6rem 0;
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 600;
+  transform: translateY(-120%);
+}
+
+.skip-link:focus-visible {
+  transform: translateY(0);
+  outline-offset: 2px;
+}
+
 .page-head {
   margin-bottom: 1.5rem;
 }
@@ -871,6 +889,74 @@ input[type="file"]::file-selector-button:hover {
   margin-top: 1.5rem;
   font-size: 0.88rem;
   color: var(--muted);
+}
+
+.pager a[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.session .table th,
+.session .table td {
+  padding-top: 0.25rem;
+  padding-bottom: 0.25rem;
+}
+
+.set-group th {
+  border-top: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  font-size: 0.9rem;
+  font-weight: 600;
+  letter-spacing: 0;
+  text-transform: none;
+  white-space: normal;
+}
+
+.table tbody:first-of-type .set-group th {
+  border-top: 0;
+}
+
+.session .table .set-group th {
+  padding-top: 0.4rem;
+  padding-bottom: 0.1rem;
+}
+
+.set-group-count {
+  margin-left: 0.5rem;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 400;
+}
+
+.danger-zone {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 2.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid color-mix(in srgb, var(--danger) 35%, transparent);
+  border-radius: var(--radius);
+  background: var(--danger-soft);
+}
+
+.danger-zone h2 {
+  margin: 0 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.danger-zone p {
+  margin: 0;
+  max-width: 46ch;
+}
+
+.danger-confirm {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0;
 }
 
 .auth {
