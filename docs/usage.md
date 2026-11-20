@@ -123,7 +123,8 @@ Search is a case-insensitive substring match on the stored names; it does not
 fold scripts, so a hiragana query does not find a katakana exercise name.
 
 `/history/` permanently redirects to `/sessions/`, keeping any query string, so
-an old `/history/?page=2` bookmark still lands on the same page.
+an old `/history/?page=2` bookmark still lands on the same page. `/corrections/`
+permanently redirects to `/muscles/` for the same reason.
 
 *Delete all sessions* at the bottom of the page removes every session and set
 stored for your account after a second confirmation click. Muscle-group
@@ -131,13 +132,27 @@ corrections and API tokens are kept, so a later import reuses your corrections
 instead of re-guessing them. There is nothing to export from the app: the Strong
 CSV you imported is the export, and sending it again reproduces the data.
 
-## Muscle groups
+## Muscle mapping
 
 New exercise names get a heuristic muscle-group guess at import time. Correct any
-guess on the *Muscle groups* screen (`/corrections/`); the correction applies to
-that exercise name for your account and is preserved by later imports. The field
-accepts any name, so you can add groups the heuristic does not know (for example
-`Forearms` or `Traps`); the suggestions are offered as autocomplete. Exercises the
+guess on the *Muscle mapping* screen (`/muscles/`); the correction applies to
+that exercise name for your account and is preserved by later imports. The page
+lists the exercise names you have imported, 100 per page, and saves the rows you
+edited on that page with a single *Save all*, which appears as soon as anything
+differs from what is stored and leaves you where you were; *Cancel* puts every
+row on the page back without saving. Paging is the unit of saving as well as of
+display, so a long list never turns into an oversized submission. Each row offers one alphabetical, deduplicated list of the heuristic's
+groups plus every group you already use, so a group you invented earlier is one
+click away. `Custom…` swaps the list for a text field in the same spot, where any
+name is accepted (for example `Forearms` or `Traps`); the small ✕ returns to the
+list. Names are matched case-insensitively against the list, so `chest` is stored
+as `Chest` rather than becoming a second group. The upgrade migration merges case
+and whitespace duplicates that an older version of the app allowed.
+
+A *Custom groups* card below the table lists the groups you named yourself and
+how many exercises use each. Deleting one reverts those exercises to the guessed
+group, after a second confirmation click. Groups the heuristic provides are not
+listed, because they would come back with the next import. Exercises the
 heuristic cannot place are grouped under `Other`. The heuristic matches English
 exercise names, so names in other languages usually fall back to `Other` and are
 worth correcting by hand.

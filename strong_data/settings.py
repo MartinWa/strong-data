@@ -110,6 +110,8 @@ DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 LOGIN_URL = "login"
 LOGIN_REDIRECT_URL = "sessions"
 
+DATA_UPLOAD_MAX_NUMBER_FIELDS = 8000
+
 UPDATE_CHECK_ENABLED = os.environ.get("STRONG_UPDATE_CHECK", "true").strip().lower() in {
     "1",
     "true",

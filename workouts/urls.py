@@ -14,7 +14,13 @@ urlpatterns = [
         RedirectView.as_view(pattern_name="sessions", permanent=True, query_string=True),
         name="legacy_history",
     ),
-    path("corrections/", views.corrections, name="corrections"),
+    path("muscles/", views.muscles, name="muscles"),
+    path("muscles/groups/delete/", views.delete_group, name="delete_group"),
+    path(
+        "corrections/",
+        RedirectView.as_view(pattern_name="muscles", permanent=True),
+        name="legacy_corrections",
+    ),
     path("tokens/", views.tokens, name="tokens"),
     path("tokens/<int:pk>/revoke/", views.revoke_token, name="revoke_token"),
 ]

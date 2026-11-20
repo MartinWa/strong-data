@@ -14,8 +14,10 @@ from django.urls import reverse
 from django.utils import timezone
 
 from strong_data.version import app_version
+from workouts.forms import CUSTOM_GROUP
 from workouts.models import ApiToken, ExerciseMeta, WorkoutSession
 from workouts.services import import_workouts_csv
+from workouts.views import MUSCLES_PAGE_SIZE
 
 CSV = (
     "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
@@ -29,6 +31,26 @@ def upload(client, text=CSV):
         reverse("upload"),
         {"csv_file": SimpleUploadedFile("export.csv", text.encode(), content_type="text/csv")},
     )
+
+
+def muscle_payload(user, changes=None, custom=None, start=0, size=MUSCLES_PAGE_SIZE):
+    metas = list(
+        ExerciseMeta.objects.filter(owner=user).order_by("exercise_name")[start : start + size]
+    )
+    payload = {
+        "page": str(start // size + 1),
+        "form-TOTAL_FORMS": str(len(metas)),
+        "form-INITIAL_FORMS": str(len(metas)),
+        "form-MIN_NUM_FORMS": "0",
+        "form-MAX_NUM_FORMS": str(size),
+    }
+    for index, meta in enumerate(metas):
+        payload[f"form-{index}-id"] = str(meta.pk)
+        payload[f"form-{index}-muscle_group"] = (changes or {}).get(
+            meta.exercise_name, meta.muscle_group
+        )
+        payload[f"form-{index}-muscle_group_custom"] = (custom or {}).get(meta.exercise_name, "")
+    return payload
 
 
 @pytest.fixture(autouse=True)
@@ -86,7 +108,7 @@ def test_password_toggle_is_an_icon_button(client):
 
 
 @pytest.mark.django_db
-@pytest.mark.parametrize("name", ["upload", "sessions", "corrections", "tokens"])
+@pytest.mark.parametrize("name", ["upload", "sessions", "muscles", "tokens"])
 def test_views_require_login(client, name):
     response = client.get(reverse(name))
     assert response.status_code == 302
@@ -149,17 +171,14 @@ def test_upload_reports_csv_reader_error(client, small_field_limit):
 
 
 @pytest.mark.django_db
-def test_corrections_are_owner_scoped(client):
+def test_muscle_mapping_is_owner_scoped(client):
     alice = get_user_model().objects.create_user(username="alice", password="x")
     bob = get_user_model().objects.create_user(username="bob", password="x")
     import_workouts_csv(alice, CSV)
     import_workouts_csv(bob, CSV)
     client.force_login(alice)
 
-    response = client.post(
-        reverse("corrections"),
-        {"exercise_name": "Chest Fly", "muscle_group": "Core"},
-    )
+    response = client.post(reverse("muscles"), muscle_payload(alice, {"Chest Fly": "Core"}))
 
     assert response.status_code == 302
     assert ExerciseMeta.objects.get(owner=alice, exercise_name="Chest Fly").muscle_group == "Core"
@@ -233,6 +252,14 @@ MULTI_SESSION_CSV = (
     "2026-02-10 18:00:00,Pull Day,47m,Barbell Row,1,60,8,0,0,\n"
     "2026-03-20 07:30:00,Leg Day,62m,Back Squat,1,100,5,0,0,9.0\n"
 )
+
+
+@pytest.mark.django_db
+def test_legacy_corrections_url_redirects_to_muscles(client):
+    response = client.get("/corrections/")
+
+    assert response.status_code == 301
+    assert response.url == "/muscles/"
 
 
 @pytest.mark.django_db
@@ -602,19 +629,360 @@ def test_token_expiry_can_be_set_and_must_be_in_the_future(client):
 
 
 @pytest.mark.django_db
-def test_muscle_group_accepts_free_text(client):
+def test_custom_choice_adds_a_group_the_list_lacks(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     import_workouts_csv(user, CSV)
     client.force_login(user)
 
     response = client.post(
-        reverse("corrections"),
-        {"exercise_name": "Chest Fly", "muscle_group": "Forearms"},
+        reverse("muscles"),
+        muscle_payload(user, {"Chest Fly": CUSTOM_GROUP}, {"Chest Fly": "Forearms"}),
     )
 
     assert response.status_code == 302
     meta = ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly")
     assert meta.muscle_group == "Forearms"
+
+
+@pytest.mark.django_db
+def test_custom_choice_without_a_name_is_rejected(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("muscles"),
+        muscle_payload(user, {"Chest Fly": CUSTOM_GROUP}, {"Chest Fly": "   "}),
+    )
+
+    content = response.content.decode()
+
+    assert response.status_code == 200
+    assert "Type a name for the new group." in content
+    assert 'class="is-custom"' in content
+    meta = ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly")
+    assert meta.muscle_group == "Chest"
+
+
+@pytest.mark.django_db
+def test_muscle_group_options_are_deduped_and_alphabetical(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    ExerciseMeta.objects.filter(owner=user, exercise_name="Chest Fly").update(muscle_group="chest")
+    ExerciseMeta.objects.create(owner=user, exercise_name="Traps Shrug", muscle_group="Traps")
+    client.force_login(user)
+
+    content = client.get(reverse("muscles")).content.decode()
+    first_select = re.search(r"<select[^>]*>(.*?)</select>", content, re.S).group(1)
+    options = re.findall(r'<option value="([^"]+)"', first_select)
+
+    assert options == [
+        "Abs",
+        "Biceps",
+        "Calves",
+        "Chest",
+        "Core",
+        "Glutes",
+        "Hamstrings",
+        "Lats",
+        "Lower Back",
+        "Other",
+        "Quads",
+        "Shoulders",
+        "Traps",
+        "Triceps",
+        "Upper Back",
+        CUSTOM_GROUP,
+    ]
+    assert "chest" not in options
+    assert "Custom…" in content
+
+
+@pytest.mark.django_db
+def test_muscle_mapping_saves_every_row_in_one_submit(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("muscles"),
+        muscle_payload(
+            user,
+            {"Chest Fly": CUSTOM_GROUP, "Bench Press (Barbell)": "Triceps"},
+            {"Chest Fly": "Forearms"},
+        ),
+    )
+
+    assert response.status_code == 302
+    fly = ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly")
+    bench = ExerciseMeta.objects.get(owner=user, exercise_name="Bench Press (Barbell)")
+    assert fly.muscle_group == "Forearms"
+    assert bench.muscle_group == "Triceps"
+
+
+@pytest.mark.django_db
+def test_saving_returns_to_the_top_of_the_list_not_a_row(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("muscles"),
+        muscle_payload(user, {"Chest Fly": "Core"}),
+        follow=True,
+    )
+
+    assert response.redirect_chain == [("/muscles/?page=1", 302)]
+
+
+@pytest.mark.django_db
+def test_muscle_mapping_message_names_the_exercise(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("muscles"),
+        muscle_payload(user, {"Chest Fly": "Core"}),
+        follow=True,
+    )
+
+    assert "Chest Fly → Core saved." in response.content.decode()
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("typed", "stored"),
+    [("  lats  ", "Lats"), ("upper   back", "Upper Back"), ("Forearms", "Forearms")],
+)
+def test_typed_group_is_normalised_before_it_is_stored(client, typed, stored):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    client.post(
+        reverse("muscles"),
+        muscle_payload(user, {"Chest Fly": CUSTOM_GROUP}, {"Chest Fly": typed}),
+    )
+
+    meta = ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly")
+    assert meta.muscle_group == stored
+
+
+@pytest.mark.django_db
+def test_page_offers_cancel_next_to_save(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("muscles")).content.decode()
+
+    assert content.count('class="btn muscle-save" type="reset">Cancel<') == 2
+    assert content.count('class="btn btn-primary muscle-save" type="submit">Save all<') == 2
+
+
+@pytest.mark.django_db
+def test_custom_groups_are_listed_with_counts(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    for name in ("Chest Fly", "Bench Press (Barbell)"):
+        ExerciseMeta.objects.filter(owner=user, exercise_name=name).update(muscle_group="Forearms")
+    ExerciseMeta.objects.create(owner=user, exercise_name="Traps Shrug", muscle_group="Traps")
+    client.force_login(user)
+
+    content = client.get(reverse("muscles")).content.decode()
+
+    assert "Custom groups" in content
+    assert ">Forearms<" in content
+    assert "2 exercises" in content
+    assert ">Traps<" in content
+    assert "1 exercise" in content
+    assert ">Chest<" not in content.split("Custom groups")[1]
+
+
+@pytest.mark.django_db
+def test_deleting_a_custom_group_reverts_its_exercises(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    ExerciseMeta.objects.filter(owner=user, exercise_name="Chest Fly").update(
+        muscle_group="Forearms"
+    )
+    client.force_login(user)
+
+    response = client.post(reverse("delete_group"), {"group": "Forearms"}, follow=True)
+
+    content = response.content.decode()
+    assert "Deleted Forearms. 1 exercise reverted to the guessed group." in content
+    meta = ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly")
+    assert meta.muscle_group == "Chest"
+    assert "Custom groups" not in content
+
+
+@pytest.mark.django_db
+def test_built_in_groups_cannot_be_deleted(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.post(reverse("delete_group"), {"group": "chest"}, follow=True)
+
+    assert "That group cannot be deleted." in response.content.decode()
+    assert ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly").muscle_group == "Chest"
+
+
+@pytest.mark.django_db
+def test_deleting_an_unused_group_is_a_no_op(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.post(reverse("delete_group"), {"group": "Forearms"}, follow=True)
+
+    assert "No exercise uses Forearms." in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_deleting_a_group_requires_login(client):
+    response = client.post(reverse("delete_group"), {"group": "Forearms"})
+
+    assert response.status_code == 302
+    assert reverse("login") in response.url
+
+
+@pytest.mark.django_db
+def test_one_save_cannot_create_case_duplicates(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    response = client.post(
+        reverse("muscles"),
+        muscle_payload(
+            user,
+            {"Chest Fly": CUSTOM_GROUP, "Bench Press (Barbell)": CUSTOM_GROUP},
+            {"Chest Fly": "Forearms", "Bench Press (Barbell)": "forearms"},
+        ),
+    )
+
+    assert response.status_code == 302
+    stored = set(ExerciseMeta.objects.filter(owner=user).values_list("muscle_group", flat=True))
+    assert "Forearms" in stored
+    assert "forearms" not in stored
+
+
+def _seed_exercises(user, total):
+    ExerciseMeta.objects.bulk_create(
+        [
+            ExerciseMeta(
+                owner=user,
+                exercise_name=f"Exercise {index:04d}",
+                muscle_group="Other",
+            )
+            for index in range(total)
+        ]
+    )
+
+
+@pytest.mark.django_db
+def test_helper_payload_stays_inside_the_post_field_limit(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    _seed_exercises(user, 332)
+    client.force_login(user)
+
+    payload = muscle_payload(user, {"Exercise 0020": "Quads"})
+    payload["csrfmiddlewaretoken"] = "0" * 64
+
+    assert len(payload) < 1000
+    response = client.post(reverse("muscles"), payload)
+
+    assert response.status_code == 302
+    meta = ExerciseMeta.objects.get(owner=user, exercise_name="Exercise 0020")
+    assert meta.muscle_group == "Quads"
+
+
+@pytest.mark.django_db
+def test_the_list_is_paged_and_saves_only_the_visible_rows(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    _seed_exercises(user, 332)
+    client.force_login(user)
+
+    first = client.get(reverse("muscles"))
+    second = client.get(reverse("muscles"), {"page": 2})
+
+    assert first.content.decode().count("data-muscle-row") == MUSCLES_PAGE_SIZE
+    assert "Page 1 of 4" in first.content.decode()
+    assert "Page 2 of 4" in second.content.decode()
+
+    payload = muscle_payload(user, {"Exercise 0150": "Quads"}, start=MUSCLES_PAGE_SIZE)
+    payload["csrfmiddlewaretoken"] = "0" * 64
+    response = client.post(reverse("muscles"), payload)
+
+    assert response.status_code == 302
+    assert response.url == "/muscles/?page=2"
+    assert ExerciseMeta.objects.get(owner=user, exercise_name="Exercise 0150").muscle_group == (
+        "Quads"
+    )
+
+
+@pytest.mark.django_db
+def test_two_thousand_exercises_can_be_saved_page_by_page(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    _seed_exercises(user, 2001)
+    client.force_login(user)
+
+    last = client.get(reverse("muscles"), {"page": 21})
+
+    assert last.status_code == 200
+    assert "Page 21 of 21" in last.content.decode()
+
+    payload = muscle_payload(user, {"Exercise 2000": "Quads"}, start=2000)
+    payload["csrfmiddlewaretoken"] = "0" * 64
+    response = client.post(reverse("muscles"), payload)
+
+    assert response.status_code == 302
+    meta = ExerciseMeta.objects.get(owner=user, exercise_name="Exercise 2000")
+    assert meta.muscle_group == "Quads"
+
+
+@pytest.mark.django_db
+def test_muscle_mapping_empty_state_explains_the_first_step(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    content = client.get(reverse("muscles")).content.decode()
+
+    assert "Import a CSV first" in content
+    assert "Any name is accepted" not in content
+
+
+@pytest.mark.django_db
+def test_muscle_mapping_has_no_empty_column(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("muscles")).content.decode()
+
+    assert "Save all" in content
+    assert 'class="tight"' not in content
+    assert 'class="muscle-select"' in content
+
+
+@pytest.mark.django_db
+def test_rows_mark_their_initial_value_for_the_dirty_check(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("muscles")).content.decode()
+
+    assert 'data-initial="Chest"' in content
+    assert f'data-custom="{CUSTOM_GROUP}"' in content
+    assert 'class="muscle-select"' in content
+    assert 'class="muscle-custom"' in content
+    assert "data-muscle-back" in content
+    assert content.count('class="btn btn-primary muscle-save"') == 2
+    assert ".btn.muscle-save { visibility: visible; }" in content
 
 
 @pytest.mark.django_db

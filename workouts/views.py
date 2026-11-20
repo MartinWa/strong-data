@@ -8,20 +8,37 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
-from django.db.models import Q
+from django.db.models import Count, Q
+from django.forms import modelformset_factory
 from django.shortcuts import redirect, render
+from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
 
-from parsing import InvalidCSVError, parse_workouts
+from parsing import InvalidCSVError, classify_muscle, parse_workouts
 
 from . import pending
-from .forms import MUSCLE_CHOICES, MuscleGroupForm, TokenForm, UploadForm
+from .forms import (
+    MUSCLE_CHOICES,
+    MuscleGroupForm,
+    TokenForm,
+    UploadForm,
+    clean_group_name,
+    muscle_group_options,
+)
 from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from .services import EmptyImportError, import_workouts_csv
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MULTIPART_OVERHEAD_BYTES = 1024 * 1024
+MUSCLES_PAGE_SIZE = 100
+ExerciseMetaFormSet = modelformset_factory(
+    ExerciseMeta,
+    form=MuscleGroupForm,
+    extra=0,
+    max_num=MUSCLES_PAGE_SIZE,
+    absolute_max=MUSCLES_PAGE_SIZE,
+)
 PENDING_IMPORT_KEY = "pending_import"
 SESSIONS_PAGE_SIZE = 25
 TOO_LARGE_MESSAGE = "CSV export must be 10 MB or smaller. Choose a smaller file."
@@ -220,25 +237,96 @@ def delete_sessions(request):
     return redirect("sessions")
 
 
+def _merge_group_spellings(forms):
+    spellings = {}
+    for form in forms:
+        if not form.has_changed():
+            continue
+        value = form.cleaned_data.get("muscle_group")
+        if value:
+            spellings.setdefault(value.casefold(), set()).add(value)
+    resolved = {key: min(values) for key, values in spellings.items()}
+    for form in forms:
+        value = form.cleaned_data.get("muscle_group")
+        if value and form.has_changed():
+            form.instance.muscle_group = resolved[value.casefold()]
+
+
+def _muscle_change_message(changed):
+    if not changed:
+        return "No changes to save."
+    if len(changed) == 1:
+        meta = changed[0].instance
+        return f"{meta.exercise_name} → {meta.muscle_group} saved."
+    return f"Saved {len(changed)} muscle groups."
+
+
+def _custom_groups(user):
+    built_in = {choice.casefold() for choice in MUSCLE_CHOICES}
+    counts = (
+        ExerciseMeta.objects.filter(owner=user)
+        .order_by()
+        .values("muscle_group")
+        .annotate(total=Count("id"))
+    )
+    return [
+        {"name": row["muscle_group"], "total": row["total"]}
+        for row in sorted(counts, key=lambda row: row["muscle_group"].casefold())
+        if row["muscle_group"].casefold() not in built_in
+    ]
+
+
 @login_required
-def corrections(request):
-    metas = ExerciseMeta.objects.filter(owner=request.user)
-    if request.method == "POST":
-        form = MuscleGroupForm(request.POST)
-        if form.is_valid():
-            updated = ExerciseMeta.objects.filter(
-                owner=request.user,
-                exercise_name=form.cleaned_data["exercise_name"],
-            ).update(muscle_group=form.cleaned_data["muscle_group"])
-            messages.success(request, "Muscle group updated." if updated else "Exercise not found.")
-            return redirect("corrections")
-    else:
-        form = MuscleGroupForm()
+def muscles(request):
+    options = muscle_group_options(request.user)
+    owned = ExerciseMeta.objects.filter(owner=request.user)
+    page = Paginator(owned, MUSCLES_PAGE_SIZE).get_page(
+        request.POST.get("page") or request.GET.get("page")
+    )
+    formset = ExerciseMetaFormSet(
+        request.POST or None,
+        queryset=page.object_list,
+        form_kwargs={"options": options},
+    )
+    if request.method == "POST" and formset.is_valid():
+        _merge_group_spellings(formset.forms)
+        changed = [form for form in formset.forms if form.has_changed()]
+        formset.save()
+        messages.success(request, _muscle_change_message(changed))
+        return redirect(f"{reverse('muscles')}?page={page.number}")
     return render(
         request,
-        "workouts/corrections.html",
-        {"metas": metas, "form": form, "muscle_choices": MUSCLE_CHOICES},
+        "workouts/muscles.html",
+        {
+            "formset": formset,
+            "page": page,
+            "count": owned.count(),
+            "custom_groups": _custom_groups(request.user),
+        },
     )
+
+
+@login_required
+@require_POST
+def delete_group(request):
+    name = clean_group_name(request.POST.get("group"))
+    built_in = {choice.casefold() for choice in MUSCLE_CHOICES}
+    if not name or name.casefold() in built_in:
+        messages.error(request, "That group cannot be deleted.")
+        return redirect("muscles")
+    metas = list(ExerciseMeta.objects.filter(owner=request.user, muscle_group=name))
+    if not metas:
+        messages.info(request, f"No exercise uses {name}.")
+        return redirect("muscles")
+    for meta in metas:
+        meta.muscle_group = classify_muscle(meta.exercise_name)
+        meta.save(update_fields=["muscle_group"])
+    messages.success(
+        request,
+        f"Deleted {name}. "
+        f"{len(metas)} exercise{'' if len(metas) == 1 else 's'} reverted to the guessed group.",
+    )
+    return redirect("muscles")
 
 
 @login_required
