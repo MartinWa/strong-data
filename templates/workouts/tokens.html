@@ -8,13 +8,13 @@
 </div>
 
 {% if secret %}
-<div class="secret">
-  <p class="secret-label">Secret:</p>
+<div class="secret" role="status" aria-live="polite" tabindex="-1">
+  <p class="secret-label">Secret{% if created_name %} for {{ created_name }}{% endif %} — shown only once</p>
   <div class="secret-row">
     <code id="token-secret">{{ secret }}</code>
     <button class="btn btn-sm" type="button" data-copy="#token-secret">Copy</button>
   </div>
-  <p class="hint">Copy it now; it is shown only once.</p>
+  <p class="hint">Copy it now. It cannot be recovered; replace a lost secret with a new token.</p>
 </div>
 {% endif %}
 
@@ -24,10 +24,17 @@
     <span class="badge">{{ tokens|length }}</span>
   </div>
   {% if not tokens %}
-  <p class="muted">No tokens yet. Create one below to read your data over the API.</p>
+  <p class="muted">
+    No tokens yet.
+    {% if has_sessions %}
+    Create one below to read your data over the API.
+    {% else %}
+    Import a CSV first, then create a token to read it over the API.
+    {% endif %}
+  </p>
   {% else %}
   <div class="table-wrap">
-    <table class="table">
+    <table class="table table-cards">
       <thead>
         <tr>
           <th scope="col">Name</th>
@@ -35,17 +42,17 @@
           <th scope="col">Created</th>
           <th scope="col">Expiry</th>
           <th scope="col">Status</th>
-          <th scope="col" class="tight"></th>
+          <th scope="col" class="tight">Actions</th>
         </tr>
       </thead>
       <tbody>
         {% for token in tokens %}
         <tr>
-          <td>{{ token.name }}</td>
-          <td><code>{{ token.prefix }}…</code></td>
-          <td class="muted">{{ token.created_at|isodate:"day" }}</td>
-          <td class="muted">{% if token.expires_at %}expires {{ token.expires_at|isodate }}{% else %}—{% endif %}</td>
-          <td>
+          <td data-label="Name">{{ token.name }}</td>
+          <td data-label="Prefix"><code>{{ token.prefix }}…</code></td>
+          <td data-label="Created" class="muted">{{ token.created_at|isodate:"day" }}</td>
+          <td data-label="Expiry" class="muted">{% if token.expires_at %}{{ token.expires_at|isodate }}{% else %}—{% endif %}</td>
+          <td data-label="Status">
             {% if token.revoked_at %}
             <span class="badge badge-danger">revoked</span>
             {% elif token.is_expired %}
@@ -54,12 +61,27 @@
             <span class="badge badge-success">active</span>
             {% endif %}
           </td>
-          <td class="tight">
-            {% if not token.revoked_at %}
-            <form method="post" action="{% url 'revoke_token' token.pk %}" class="inline-form">
-              {% csrf_token %}
-              <button class="btn btn-sm btn-danger" type="submit">Revoke</button>
-            </form>
+          <td class="tight" data-actions>
+            {% if token.is_active %}
+            <div class="row-confirm" data-row-confirm>
+              <a class="btn btn-sm btn-danger" href="?confirm={{ token.pk }}" data-row-start>Revoke</a>
+              <form method="post" action="{% url 'revoke_token' token.pk %}" data-row-form{% if request.GET.confirm != token.pk|stringformat:"s" %} hidden{% endif %}>
+                {% csrf_token %}
+                <p class="small" id="revoke-warning-{{ token.pk }}">Clients using {{ token.name }} stop working immediately.</p>
+                <button class="btn btn-sm btn-danger" type="submit" aria-describedby="revoke-warning-{{ token.pk }}">Revoke token</button>
+                <a class="btn btn-sm btn-ghost" href="{% url 'tokens' %}" data-row-cancel>Cancel</a>
+              </form>
+            </div>
+            {% else %}
+            <div class="row-confirm" data-row-confirm>
+              <a class="btn btn-sm" href="?confirm={{ token.pk }}" data-row-start>Delete</a>
+              <form method="post" action="{% url 'delete_token' token.pk %}" data-row-form{% if request.GET.confirm != token.pk|stringformat:"s" %} hidden{% endif %}>
+                {% csrf_token %}
+                <p class="small" id="delete-warning-{{ token.pk }}">Removes {{ token.name }} permanently; the name becomes available again.</p>
+                <button class="btn btn-sm btn-danger" type="submit" aria-describedby="delete-warning-{{ token.pk }}">Delete token</button>
+                <a class="btn btn-sm btn-ghost" href="{% url 'tokens' %}" data-row-cancel>Cancel</a>
+              </form>
+            </div>
             {% endif %}
           </td>
         </tr>
@@ -85,15 +107,72 @@
 </div>
 
 <script>
-document.querySelectorAll('[data-copy]').forEach(function (button) {
-  button.addEventListener('click', function () {
-    var target = document.querySelector(button.dataset.copy);
-    if (!target || !navigator.clipboard) return;
-    navigator.clipboard.writeText(target.textContent.trim()).then(function () {
-      button.textContent = 'Copied';
-      setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+(function () {
+  document.querySelectorAll('[data-row-confirm]').forEach(function (zone) {
+    var start = zone.querySelector('[data-row-start]');
+    var form = zone.querySelector('[data-row-form]');
+    var cancel = zone.querySelector('[data-row-cancel]');
+    if (!start || !form) return;
+    start.addEventListener('click', function (event) {
+      event.preventDefault();
+      start.hidden = true;
+      form.hidden = false;
+      var submit = form.querySelector('button[type="submit"]');
+      if (submit) submit.focus();
+    });
+    if (cancel) {
+      cancel.addEventListener('click', function (event) {
+        event.preventDefault();
+        form.hidden = true;
+        start.hidden = false;
+        start.focus();
+      });
+    }
+    if (!form.hidden) start.hidden = true;
+  });
+
+  function copyText(text) {
+    if (window.isSecureContext && navigator.clipboard) {
+      return navigator.clipboard.writeText(text);
+    }
+    return new Promise(function (resolve, reject) {
+      var field = document.createElement('textarea');
+      field.value = text;
+      field.setAttribute('readonly', '');
+      field.style.position = 'fixed';
+      field.style.top = '-1000px';
+      document.body.appendChild(field);
+      field.select();
+      var copied = false;
+      try {
+        copied = document.execCommand('copy');
+      } catch (error) {
+        copied = false;
+      }
+      document.body.removeChild(field);
+      if (copied) resolve();
+      else reject();
+    });
+  }
+
+  document.querySelectorAll('[data-copy]').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var target = document.querySelector(button.dataset.copy);
+      if (!target) return;
+      copyText(target.textContent.trim()).then(function () {
+        button.textContent = 'Copied';
+        setTimeout(function () { button.textContent = 'Copy'; }, 1500);
+      }).catch(function () {
+        var selection = window.getSelection();
+        if (selection) selection.selectAllChildren(target);
+        button.textContent = 'Press Ctrl+C';
+        setTimeout(function () { button.textContent = 'Copy'; }, 4000);
+      });
     });
   });
-});
+
+  var secretBox = document.querySelector('.secret');
+  if (secretBox) secretBox.focus();
+})();
 </script>
 {% endblock %}

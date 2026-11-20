@@ -18,7 +18,7 @@
       <nav class="site-nav" aria-label="Main">
         <a href="{% url 'sessions' %}"{% if request.resolver_match.url_name == 'sessions' %} class="active" aria-current="page"{% endif %}>Sessions</a>
         <a href="{% url 'upload' %}"{% if request.resolver_match.url_name == 'upload' %} class="active" aria-current="page"{% endif %}>Upload</a>
-        <a href="{% url 'muscles' %}"{% if request.resolver_match.url_name == 'muscles' %} class="active" aria-current="page"{% endif %}>Muscle mapping</a>
+        <a href="{% url 'muscles' %}"{% if request.resolver_match.url_name == 'muscles' %} class="active" aria-current="page"{% endif %}>Muscles</a>
         <a href="{% url 'tokens' %}"{% if request.resolver_match.url_name == 'tokens' %} class="active" aria-current="page"{% endif %}>Tokens</a>
       </nav>
       <form class="logout" action="{% url 'logout' %}" method="post">
