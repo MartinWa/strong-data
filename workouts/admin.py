@@ -11,7 +11,14 @@ class ReadOnlyAdmin(admin.ModelAdmin):
         return False
 
     def has_delete_permission(self, request, obj=None):
-        return False
+        if obj is None:
+            return False
+        match = request.resolver_match
+        url_name = getattr(match, "url_name", None)
+        if not url_name:
+            return False
+        own_prefix = f"{self.opts.app_label}_{self.opts.model_name}_"
+        return not url_name.startswith(own_prefix)
 
 
 @admin.register(Exercise)
