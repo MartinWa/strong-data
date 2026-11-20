@@ -17,7 +17,7 @@ from parsing import InvalidCSVError, parse_workouts
 
 from . import pending
 from .forms import MUSCLE_CHOICES, MuscleGroupForm, TokenForm, UploadForm
-from .models import ApiToken, ExerciseMeta, WorkoutSession, WorkoutSet
+from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from .services import EmptyImportError, import_workouts_csv
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
@@ -211,6 +211,7 @@ def delete_sessions(request):
     set_total = WorkoutSet.objects.filter(owner=request.user).count()
     with transaction.atomic():
         owned.delete()
+        Exercise.objects.filter(owner=request.user).delete()
     messages.success(
         request,
         f"Deleted {session_total} session{'' if session_total == 1 else 's'} "
