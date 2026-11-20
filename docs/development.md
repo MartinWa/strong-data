@@ -72,6 +72,9 @@ which requires a successful CI run for the tagged commit, checks and audits both
 `linux/amd64` and `linux/arm64` images, publishes the tested index with per-platform
 SBOM and provenance attestations, and creates the GitHub Release. Existing versions
 are never overwritten and `latest` advances only for the current stable release.
+Pushing the tag immediately after a merge is fine: the workflow waits up to fifteen
+minutes for the CI run on that commit to conclude instead of failing, and re-running
+it is always safe, because an existing image version is never overwritten.
 
 On a clean, committed `main` checkout, create a local annotated tag in PowerShell:
 
