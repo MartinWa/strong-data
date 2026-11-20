@@ -7,19 +7,34 @@ server-rendered web UI, and a versioned, owner-scoped bearer-token JSON API.
 
 - Python 3.14, Django 5.2 LTS, django-ninja, uv, ruff
 - SQLite only; server-rendered Django templates, no CDN and no SPA
-- Non-root container, no published ports (traffic arrives via a TLS reverse proxy)
+- Non-root container, no published ports by default (traffic arrives via a TLS
+  reverse proxy), read-only root filesystem, all capabilities dropped
+- Released images for `linux/amd64` and `linux/arm64`; no external database, no
+  sidecar container, no CDN, no telemetry
 
 ## Run with Docker
 
-The image runs as a non-root user and publishes no ports; put it behind your own
-TLS reverse proxy on a private Docker network. Compose builds it, applies
-migrations and serves the app with waitress, with SQLite on a named volume.
-Release tags publish a tested, attested image to GHCR.
+Requires Docker Engine 24+ with a current Docker Compose release, and a TLS
+reverse proxy.
 
 ```sh
-cp .env.example .env
-docker compose up -d --build
+docker pull ghcr.io/martinwa/strong-data:latest
+# or build from this working copy instead:
+#   docker build --target production -t strong-data:local .
+#   and set STRONG_IMAGE=strong-data:local in .env
+
+mkdir -p data && sudo chown -R 1000:1000 data
+cp .env.example .env      # STRONG_SECRET_KEY and STRONG_ALLOWED_HOSTS; the example
+                          # already sets STRONG_TRUSTED_PROXY=*
+docker compose up -d
+docker network connect strong-data caddy   # your proxy, forwarding to web:8000
 ```
+
+The database lives in `./data` on the host, so backups are plain files. If your
+proxy runs on the host instead of in a container, add the loopback port with
+`-f compose.host-port.yaml`. To build from this working copy rather than pull a
+release, add `-f compose.local-build.yaml`, which builds and tags `strong-data:local`. All
+variables, both proxy patterns and the upgrade path are in `docs/deployment.md`.
 
 For a local dev server with no `.env` required:
 
@@ -37,6 +52,7 @@ docker compose -f compose.development.yaml up --build
 - `docs/api.md` — API auth, envelope, guardrails and derived-number definitions
 - `SECURITY.md` — security policy and vulnerability reporting
 - `CONTRIBUTING.md` — contribution workflow
+- `CLA.md` — contributor license agreement, signature required before a first merge
 - `LICENSE` / `NOTICE` — PolyForm Noncommercial 1.0.0
 
 ## Roadmap and status
@@ -60,4 +76,10 @@ working plan is private; this summary and the linked docs are the public source 
 
 ## License
 
-PolyForm Noncommercial 1.0.0. See `LICENSE` and `NOTICE`.
+PolyForm Noncommercial 1.0.0 — source-available, not OSI open source. Anyone may
+run, modify and share it for any noncommercial purpose, including a home lab, a
+nonprofit or research use. Commercial use requires a separate license: open an
+topic in this repository's Discussions to arrange one. See `LICENSE` and `NOTICE`.
+
+Contributions are accepted under `CLA.md`, which keeps your copyright and grants
+the project the rights that dual licensing needs.

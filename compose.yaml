@@ -1,18 +1,22 @@
-# Installation-specific values come from private .env configuration.
+# Installation-specific values come from a private .env file or the shell.
 services:
   web:
-    image: "${STRONG_IMAGE:?Set a tested local or released image tag or digest}"
-    build:
-      context: .
-      target: production
-    env_file: "${STRONG_ENV_FILE:-.env}"
+    image: "${STRONG_IMAGE:-ghcr.io/martinwa/strong-data:latest}"
+    user: "${PUID:-1000}:${PGID:-1000}"
     environment:
-      STRONG_DB_PATH: /app/data/strong.sqlite3
+      - STRONG_SECRET_KEY
+      - STRONG_ALLOWED_HOSTS
+      - STRONG_TRUSTED_PROXY
+      - STRONG_TIME_ZONE
+      - STRONG_SECRET_KEY_FILE
+      - STRONG_CSRF_TRUSTED_ORIGINS
+      - STRONG_UPDATE_CHECK
+      - STRONG_PENDING_SWEEP_SECONDS
     volumes:
-      - data:/app/data
-    networks:
-      - managed-proxy
+      - ./data:/app/data
     restart: unless-stopped
+    init: true
+    stop_grace_period: 30s
     read_only: true
     tmpfs:
       - /tmp:size=536870912,mode=1777
@@ -26,8 +30,5 @@ services:
         max-size: "10m"
         max-file: "3"
 networks:
-  managed-proxy:
-    external: true
-    name: "${PROXY_NETWORK:?Set the existing private proxy network}"
-volumes:
-  data:
+  default:
+    name: "${STRONG_NETWORK:-strong-data}"

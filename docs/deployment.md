@@ -1,85 +1,166 @@
 # Deployment
 
-strong-data ships as a non-root container image. It publishes **no ports**: run it
-behind a TLS-terminating reverse proxy on a private Docker network. SQLite is the
-only datastore and lives in a named volume.
+strong-data ships as a non-root container image and publishes no ports on its own:
+run it behind a TLS-terminating reverse proxy. SQLite is the only datastore and
+lives in a host directory mounted at `/app/data`.
 
-## Image and configuration
+## Requirements
 
-Either pull a tested release image or build one locally:
+- Docker Engine 24 or newer, with a current Docker Compose release
+- a TLS-terminating reverse proxy (Caddy, nginx, Traefik, or a NAS proxy app)
+- an `amd64` or `arm64` host
+
+## Images
+
+Released images are published to GHCR for `linux/amd64` and `linux/arm64`:
 
 ```sh
 docker pull ghcr.io/martinwa/strong-data:latest
-# or
-docker build --target production -t strong-data:local .
 ```
 
-Released images are built for `linux/amd64` only. On ARM hosts, build the image
-locally with `docker build --target production` (or run the amd64 image under
-emulation).
+Pin a version (`ghcr.io/martinwa/strong-data:1.0.0`) or, better, a digest
+(`ghcr.io/martinwa/strong-data@sha256:...`) for a deployment you do not want to
+change underneath you. To build from a working copy instead:
 
-Compose resolves the image and the proxy network from the environment, so both are
-recorded in the private `.env` file. Production configuration is mandatory: the base
-`compose.yaml` requires `.env` and refuses to start without it, and the application
-itself refuses to start when `STRONG_DEBUG` is unset or false unless
-`STRONG_SECRET_KEY` holds a real value. The development fallback and the
-`.env.example` placeholder are both rejected, so a copied example file cannot be
-deployed by accident. Copy the example environment file and fill in real values
-before the first start:
+```sh
+docker build --target production -t strong-data:local .
+# or let Compose do it, without touching the default deployment path:
+docker compose -f compose.yaml -f compose.local-build.yaml up -d
+```
+
+`compose.local-build.yaml` always builds and tags `strong-data:local`, whatever
+`STRONG_IMAGE` says, so it cannot quietly deploy a published image or overwrite a
+release tag with local source.
+
+## Configuration
+
+`compose.yaml` reads its values from a private `.env` file next to it, or from the
+shell when they are exported there. Three values have no usable default:
 
 ```sh
 cp .env.example .env
+# edit .env: set STRONG_SECRET_KEY and STRONG_ALLOWED_HOSTS
 ```
 
-| Variable | Meaning |
-| --- | --- |
-| `STRONG_IMAGE` | Image tag or digest to deploy: a released GHCR tag (`ghcr.io/martinwa/strong-data:1.0.0`), `ghcr.io/martinwa/strong-data@sha256:...`, or a locally built tag such as `strong-data:local`. |
-| `PROXY_NETWORK` | Name of the existing private Docker network your TLS reverse proxy is attached to. |
-| `STRONG_SECRET_KEY` | Django secret. Required: startup fails if it is missing or still the `.env.example` placeholder. Generate a fresh one per installation: `python -c "import secrets; print(secrets.token_urlsafe(50))"` |
-| `STRONG_DEBUG` | `false` in production. Never leave it enabled on a public instance. |
-| `STRONG_ALLOWED_HOSTS` | Comma-separated public hostnames the proxy forwards, e.g. `workouts.example.com`. |
-| `STRONG_DB_PATH` | SQLite path inside the container; keep the default `/app/data/strong.sqlite3` so it lands on the data volume. |
-| `STRONG_STATIC_ROOT` | Where collected static files live (the image ships them at `/app/staticfiles`). Override only for special setups. |
-| `STRONG_PENDING_DIR` | Where previewed-but-unconfirmed uploads are staged. Defaults to `/tmp/strong-data-pending`, which lands on the container's `/tmp` tmpfs; override only if you mount a dedicated volume. |
-| `STRONG_PENDING_SWEEP_SECONDS` | How often the server deletes staged uploads whose preview expired (default `900`, i.e. every 15 minutes). `0` turns the background sweep off, for an installation that prefers an external `manage.py purge_pending` schedule. |
-| `STRONG_CSRF_TRUSTED_ORIGINS` | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
-| `STRONG_UPDATE_CHECK` | `true` (default) lets the footer ask GitHub for the latest stable release and show a dot when a newer one exists. The answer is cached for six hours and the request never blocks page rendering. Set `false` for an installation that must make no outbound requests. |
-| `STRONG_PORT` | Listen port inside the container (default `8000`). |
-| `STRONG_TRUSTED_PROXY` | Address allowed to set forwarding headers. No default: without it, `X-Forwarded-Proto` is ignored and HTTPS form submissions fail the CSRF origin check. Set it to the proxy's container address, or to `*` when the app is reachable only from the proxy network (the example file ships `*`). |
+The third, `STRONG_TRUSTED_PROXY`, already ships as `*` in the example file, which is
+correct when the container is reachable only from a trusted Docker network or a
+loopback port. Production configuration is mandatory rather than optional: the
+application refuses to start when `STRONG_SECRET_KEY` is missing or still the
+`.env.example` placeholder, and the server refuses to start without
+`STRONG_TRUSTED_PROXY`, so a copied example cannot be deployed by accident and a
+hand-written file fails loudly instead of half-working.
 
-Waitress trusts `X-Forwarded-Proto` from that address so Django sees `https` and
-HTTPS form submissions pass CSRF origin checks. Set the header on every forwarded
-request. Because the default is empty, a deployment that forgets this variable
-fails closed: the app still serves, but HTTPS form submissions are rejected rather
-than silently trusting a spoofed header. Keep `.env` private: it is gitignored, excluded from the image build
-context, and must never be committed.
+| Variable | Default | Meaning |
+| --- | --- | --- |
+| `STRONG_SECRET_KEY` | none, required | Django secret. Generate one per installation: `python -c "import secrets; print(secrets.token_urlsafe(50))"`. `STRONG_SECRET_KEY_FILE` reads the value from a file instead, for Docker or Podman secrets. |
+| `STRONG_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated public hostnames the proxy forwards, e.g. `workouts.example.com`. Requests with any other `Host` are rejected. |
+| `STRONG_TRUSTED_PROXY` | none, required | Address allowed to set forwarding headers. The example file ships `*`, which is correct when the container is reachable only from a trusted Docker network or a loopback port; set it to the proxy's container address to narrow it. The server refuses to start without a value, because `X-Forwarded-Proto` would otherwise be ignored and HTTPS form submissions would fail the CSRF origin check. |
+| `STRONG_IMAGE` | `ghcr.io/martinwa/strong-data:latest` | Image tag or digest to deploy. |
+| `STRONG_TIME_ZONE` | `UTC` | IANA zone name, e.g. `Europe/Stockholm`. Strong exports record wall-clock local time with no offset, so imports are interpreted in this zone and every date in the UI and API is rendered in it. It applies at import time: changing it later does not rewrite existing rows. |
+| `PUID` / `PGID` | `1000` / `1000` | UID and GID the process runs as and that must own the `data` directory. |
+| `STRONG_DEBUG` | `false` | Never enable on a public instance, and not passed by the production Compose file at all. With `false` the session and CSRF cookies are `Secure`, so the app must be served over HTTPS. |
+| `STRONG_CSRF_TRUSTED_ORIGINS` | empty | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
+| `STRONG_UPDATE_CHECK` | `true` | Lets the footer ask GitHub for the latest stable release and show a dot when a newer one exists. Cached for six hours; never blocks page rendering. Set `false` for an installation that must make no outbound requests. |
+| `STRONG_PENDING_SWEEP_SECONDS` | `900` | How often the server deletes staged uploads whose preview expired. `0` turns the background sweep off, for an installation that prefers an external `manage.py purge_pending` schedule. |
+| `STRONG_PORT` | `8000` | Listen port inside the container. Not passed by the production Compose file; keep the default unless you also change the published port. |
+| `STRONG_DB_PATH` | `/app/data/strong.sqlite3` | Set by the image. Override only when you mount the database somewhere else. |
+| `STRONG_STATIC_ROOT` | `/app/staticfiles` | Where collected static files live. The image ships them and is read-only, so override only together with a writable volume. |
+| `STRONG_NETWORK` | `strong-data` | Name of the Docker network Compose creates for the app. |
+| `PROXY_NETWORK` | `proxy` | Existing proxy network to join, used only with `compose.proxy-network.yaml`. |
+| `STRONG_HOST_PORT` | `8000` | Loopback port, used only with `compose.host-port.yaml`. |
 
-## Start
+The Compose file holds no defaults of its own: it passes the application variables
+through untouched, so a value in `.env` (or exported in the shell) is what the
+container sees, and an unset value falls back to the default in the table — except
+the three with no default, which stop startup instead.
+`STRONG_DB_PATH` and `STRONG_STATIC_ROOT` come from the image; `STRONG_DEBUG` and
+`STRONG_PORT` are deliberately not passed. Compose merges a `compose.override.yaml`
+next to `compose.yaml` automatically, which is the place to add anything extra:
+
+```yaml
+services:
+  web:
+    environment:
+      - STRONG_DEBUG
+      - STRONG_PORT
+```
+
+`docker compose config` prints the effective configuration, including which
+variables are set.
+
+## First start
+
+The `data` directory is a bind mount, so the host owns it and backups are plain
+files. Create it and give it to the same UID and GID the container runs as, or the
+app cannot create the database:
 
 ```sh
+mkdir -p data
+sudo chown -R 1000:1000 data
+cp .env.example .env
+# edit .env: STRONG_SECRET_KEY, STRONG_ALLOWED_HOSTS, and STRONG_TIME_ZONE if you are not on UTC
 docker compose up -d
-```
-
-On each start the container applies migrations and serves the app with waitress.
-Static files are collected into the image at build time and served locally by
-WhiteNoise; nothing is fetched from a CDN. The container runs read-only with all
-Linux capabilities dropped, on a tmpfs `/tmp`, and its built-in health check calls
-`GET /api/v1/healthz` every 30 seconds:
-
-```sh
-docker compose ps
 docker compose logs -f web
 ```
 
-## Reverse proxy
+On each start the container applies migrations and serves the app with waitress.
+If the data directory is not writable, startup stops with an error that names the
+directory and the `chown` that fixes it. Static files are collected into the image
+at build time and served locally by WhiteNoise; nothing is fetched from a CDN. The
+container runs read-only with all Linux capabilities dropped, on a tmpfs `/tmp`,
+and its built-in health check calls `GET /api/v1/healthz` every 30 seconds:
 
-The `web` service joins a pre-existing proxy network and is reachable from other
-containers on that network at `web:8000`. Put your own TLS proxy on the same
-network and forward to it. A minimal nginx location block looks like this:
+```sh
+docker compose ps
+curl -fsS https://workouts.example.com/api/v1/healthz
+```
+
+Do not point the `data` directory at NFS or SMB: SQLite write-ahead logging is not
+safe on network filesystems.
+
+## Connecting a reverse proxy
+
+Two patterns cover every common home lab setup. The application needs no
+proxy-specific settings for either one.
+
+### A proxy container on a shared Docker network (default)
+
+Compose creates a network named `strong-data`. Attach your proxy container to it and
+forward to `web:8000`:
+
+```sh
+docker network connect strong-data caddy
+```
+
+If your proxy already owns a private network that all your services join, use that
+network instead. Its name is the only value you need:
+
+```sh
+docker network ls
+echo 'PROXY_NETWORK=proxy' >> .env
+docker compose -f compose.yaml -f compose.proxy-network.yaml up -d
+```
+
+### A proxy on the host
+
+For a proxy installed on the host itself, such as a NAS reverse-proxy package or a
+native nginx or Caddy, publish the port on loopback. It is never reachable from
+outside the host:
+
+```sh
+docker compose -f compose.yaml -f compose.host-port.yaml up -d
+```
+
+Point the proxy at `http://127.0.0.1:8000` and set `STRONG_HOST_PORT` if 8000 is
+taken. Do not bind the port to `0.0.0.0`.
+
+Either way, terminate TLS at the proxy, keep the app unreachable from the public
+network except through it, and raise the upload size limit only as far as needed
+for the 10 MB upload limit. Set the forwarding header on every request:
 
 ```nginx
 location / {
-    proxy_pass http://web:8000;
+    proxy_pass http://127.0.0.1:8000;
     proxy_set_header Host $host;
     proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
     proxy_set_header X-Forwarded-Proto https;
@@ -87,9 +168,20 @@ location / {
 }
 ```
 
-Terminate TLS at the proxy, keep the app unreachable from the public network
-except through it, and raise `client_max_body_size` only as needed for the 10 MB
-upload limit. Do not publish port 8000 on the host.
+```caddyfile
+workouts.example.com {
+    reverse_proxy web:8000
+}
+```
+
+```yaml
+traefik.http.routers.strong-data.rule: Host(`workouts.example.com`)
+traefik.http.services.strong-data.loadbalancer.server.port: "8000"
+```
+
+Caddy forwards `X-Forwarded-Proto` on its own; nginx and Traefik need it set
+explicitly. Keep `.env` private: it is gitignored, excluded from the image build
+context, and must never be committed.
 
 ## Administrator accounts
 
@@ -111,9 +203,8 @@ runs in two places: on a background thread in the server process every
 `STRONG_PENDING_SWEEP_SECONDS` (default 900), starting once at boot, and at the
 start of any request that reaches the upload, preview or sessions page.
 
-`tools/serve.py` starts the thread, so the production image sweeps itself and no
-timer, cron job or extra service is needed or configured: the thread lives with
-the web process that owns the staging directory. The development server
+`tools/serve.py` starts the thread, so the container sweeps itself and no timer,
+cron job or extra service is needed or configured. The development server
 (`runserver`) has no thread, and sweeps on request as it always did.
 
 Set `STRONG_PENDING_SWEEP_SECONDS=0` to disable the thread and drive the sweep
@@ -124,43 +215,53 @@ docker compose exec -T web python manage.py purge_pending [--ttl SECONDS]
 ```
 
 Use `exec`, not `run`: pending files live in the container's `/tmp` tmpfs, which a
-fresh container would not see. The same asymmetry applies to an external cron job
-— it must run inside the running web container. If you disable the thread, sweep
-at least as often as a preview can live (one hour) so abandoned uploads do not
-pile up. An installation that mounts a dedicated volume at `STRONG_PENDING_DIR` can
-run the command from any container instead.
+fresh container would not see. If you disable the thread, sweep at least as often
+as a preview can live (one hour). An installation that mounts a volume at
+`STRONG_PENDING_DIR` can run the command from any container instead.
+
+## Auto-updates
+
+The image carries no updater and no Watchtower label, so nothing restarts the app
+behind your back. If you run Watchtower or Diun, opt this container in explicitly
+in your own override file:
+
+```yaml
+services:
+  web:
+    labels:
+      - com.centurylinklabs.watchtower.enable=true
+```
 
 ## Verify and upgrade
-
-```sh
-curl -fsS https://workouts.example.com/api/v1/healthz
-```
 
 Take a backup before upgrading (see `docs/backup-and-recovery.md`), update
 `STRONG_IMAGE` to the new released tag, then:
 
 ```sh
-docker compose up -d
+docker compose up -d --pull always
 ```
 
-Migrations run automatically on start. To roll back, point `STRONG_IMAGE` back to
-the previous image tag and restore the database backup together.
+`--pull always` matters: without it, Compose does not refresh an unchanged tag
+such as `latest`. Migrations run automatically on start. To roll back, point
+`STRONG_IMAGE` back to the previous tag and restore the database backup together.
 
-### Upgrading from pre-release images
+## Ownership
 
-Databases created by images built before the non-root UID was fixed at 1000 are
-owned by a different, system-chosen UID, so write access to the existing data
-volume is lost after upgrading. Run a one-time ownership migration with only
-the ownership capability granted, while the service is stopped:
+The image runs as an unprivileged user and drops every Linux capability, so it can
+never `chown` anything, inside the container or on the host. Ownership is therefore
+a host concern: the `data` directory must belong to `PUID:PGID` (default
+`1000:1000`). On a NAS where those IDs differ, set them and fix the directory once:
 
 ```sh
-docker compose stop web
-docker compose run --rm --user 0:0 --cap-add CHOWN web chown -R 1000:1000 /app/data
+echo 'PUID=1026' >> .env
+echo 'PGID=100' >> .env
+docker compose down
+sudo chown -R 1026:100 data
 docker compose up -d
 ```
 
-If the app fails with a database permission error right after an upgrade, this
-migration is the fix; it is idempotent and never needed for fresh data volumes.
+Restoring a backup is the same operation: stop the app, copy the file in, `chown` it
+to `PUID:PGID`, start the app.
 
 ## Local development
 

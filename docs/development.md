@@ -12,8 +12,12 @@ uv run python manage.py migrate
 ```
 
 Configuration is read from the environment: `STRONG_SECRET_KEY`, `STRONG_DEBUG`,
-`STRONG_ALLOWED_HOSTS` and `STRONG_DB_PATH`. See `.env.example`; never commit a real
-`.env`.
+`STRONG_ALLOWED_HOSTS`, `STRONG_DB_PATH` and `STRONG_TIME_ZONE`. See `.env.example`;
+never commit a real `.env`.
+
+`STRONG_TIME_ZONE` sets the zone Strong exports' wall-clock timestamps are read in,
+and the zone the UI and API render. It defaults to `UTC`; the development container
+keeps it there so tests and screenshots are stable.
 
 With `STRONG_DEBUG` unset the app runs in production mode and refuses to start
 without a real `STRONG_SECRET_KEY`. For local commands either export a key or set
@@ -58,6 +62,36 @@ Django caches the set of installed tag libraries per process, so a long-running
 library` after `workouts/templatetags/formatting.py` exists on disk. The bind mount is
 fine; only the process is stale. Any page that reports a missing library lists `assets`
 but not the new one — that is the signal to restart rather than to debug the module.
+
+## Releases
+
+A Git tag supplies the image version and the footer version through the
+`STRONG_VERSION` build argument, so no version bump in `pyproject.toml` or `uv.lock`
+is needed. Pushing a stable `X.Y.Z` tag on `main` triggers `.github/workflows/release.yml`,
+which requires a successful CI run for the tagged commit, checks and audits both the
+`linux/amd64` and `linux/arm64` images, publishes the tested index with per-platform
+SBOM and provenance attestations, and creates the GitHub Release. Existing versions
+are never overwritten and `latest` advances only for the current stable release.
+
+On a clean, committed `main` checkout, create a local annotated tag in PowerShell:
+
+```powershell
+./tools/tag_release.ps1 -Version 1.0.0 -WhatIf
+./tools/tag_release.ps1 -Version 1.0.0
+```
+
+Use the version you intend; `1.0.0` is illustrative. After the first stable tag,
+omitting `-Version` increments its patch component. The helper pushes only when
+explicitly given `-Push`, and never moves or deletes an existing tag. Confirm the
+version before pushing: `git push --no-follow-tags origin refs/tags/<version>`.
+
+The workflow ends by requiring the GHCR package to be pullable without
+authentication, because GitHub creates container packages private even for a public
+repository. It sets the visibility itself when the token allows it, which needs a
+repository secret `PACKAGE_TOKEN` holding a token with `write:packages`. Without that
+secret the first release finishes with the package private and the step fails with
+the one-time instruction: open the package settings on the repository page and set
+the visibility to public. Later releases inherit it.
 
 ## Optional parity check
 

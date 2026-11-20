@@ -86,7 +86,9 @@ def verify_serving(database):
         child.wait(timeout=30)
     with sqlite3.connect(database) as connection:
         migrated = connection.execute("SELECT COUNT(*) FROM django_migrations").fetchone()[0]
+        journal = connection.execute("PRAGMA journal_mode").fetchone()[0]
     assert migrated > 0, migrated
+    assert journal == "wal", journal
 
 
 def verify_refuses_unsafe_secret():
@@ -105,10 +107,30 @@ def verify_refuses_unsafe_secret():
     assert b"STRONG_SECRET_KEY" in result.stderr, result.stderr
 
 
+def verify_refuses_missing_proxy():
+    env = {key: value for key, value in os.environ.items() if key != "STRONG_TRUSTED_PROXY"}
+    database = Path(tempfile.mkdtemp(prefix="strong-data-proxy-check-")) / "x.sqlite3"
+    env.update(
+        {
+            "STRONG_SECRET_KEY": "synthetic-production-check-key-never-for-runtime-0000000",
+            "STRONG_DB_PATH": str(database),
+        }
+    )
+    result = subprocess.run(
+        [sys.executable, "-m", "tools.serve"],
+        env=env,
+        capture_output=True,
+        check=False,
+    )
+    assert result.returncode != 0, "The server started without naming a trusted proxy."
+    assert b"STRONG_TRUSTED_PROXY" in result.stderr, result.stderr
+
+
 def main():
     verify_running_as_non_root()
     verify_dev_tooling_absent()
     verify_refuses_unsafe_secret()
+    verify_refuses_missing_proxy()
     version = verify_version()
     data = Path(tempfile.mkdtemp(prefix="strong-data-production-check-"))
     verify_serving(data / "strong.sqlite3")

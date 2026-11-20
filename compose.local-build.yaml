@@ -1,0 +1,8 @@
+# Build from this working copy instead of deploying a published image.
+services:
+  web:
+    image: strong-data:local
+    pull_policy: build
+    build:
+      context: .
+      target: production

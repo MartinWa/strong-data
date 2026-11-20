@@ -9,6 +9,7 @@ from django.core.exceptions import ImproperlyConfigured
 from strong_data.settings import (
     DEFAULT_PENDING_SWEEP_SECONDS,
     DEVELOPMENT_SECRET_KEY,
+    default_time_zone,
     secret_key,
     sweep_interval,
 )
@@ -55,6 +56,75 @@ def test_development_ignores_the_placeholder(monkeypatch):
     monkeypatch.setenv("STRONG_SECRET_KEY", PLACEHOLDER)
 
     assert secret_key(debug=True) == DEVELOPMENT_SECRET_KEY
+
+
+def test_production_reads_the_secret_from_a_file(monkeypatch, tmp_path):
+    secret_file = tmp_path / "secret"
+    secret_file.write_text(REAL_SECRET + "\n", encoding="utf-8")
+    monkeypatch.delenv("STRONG_SECRET_KEY", raising=False)
+    monkeypatch.setenv("STRONG_SECRET_KEY_FILE", str(secret_file))
+
+    assert secret_key(debug=False) == REAL_SECRET
+
+
+def test_environment_secret_wins_over_the_file(monkeypatch, tmp_path):
+    secret_file = tmp_path / "secret"
+    secret_file.write_text("file-secret-used-in-the-wrong-place-000000000", encoding="utf-8")
+    monkeypatch.setenv("STRONG_SECRET_KEY", REAL_SECRET)
+    monkeypatch.setenv("STRONG_SECRET_KEY_FILE", str(secret_file))
+
+    assert secret_key(debug=False) == REAL_SECRET
+
+
+def secure_cookies(**overrides):
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"STRONG_DEBUG", "STRONG_SECRET_KEY"}
+    }
+    env.update(overrides)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import strong_data.settings as s;"
+            " print(s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE)",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
+def test_secure_cookies_are_on_in_production():
+    assert secure_cookies(STRONG_SECRET_KEY=REAL_SECRET) == "True True"
+
+
+def test_secure_cookies_are_off_in_development():
+    assert secure_cookies(STRONG_DEBUG="true") == "False False"
+
+
+def test_time_zone_defaults_to_utc(monkeypatch):
+    monkeypatch.delenv("STRONG_TIME_ZONE", raising=False)
+
+    assert default_time_zone() == "UTC"
+
+
+def test_time_zone_accepts_an_iana_name(monkeypatch):
+    monkeypatch.setenv("STRONG_TIME_ZONE", "Europe/Stockholm")
+
+    assert default_time_zone() == "Europe/Stockholm"
+
+
+@pytest.mark.parametrize("value", ["Mars/Olympus", "UTC+2", "../etc/passwd", "/etc"])
+def test_time_zone_rejects_anything_but_an_iana_name(monkeypatch, value):
+    monkeypatch.setenv("STRONG_TIME_ZONE", value)
+
+    with pytest.raises(ImproperlyConfigured):
+        default_time_zone()
 
 
 def test_sweep_interval_defaults_to_fifteen_minutes():
