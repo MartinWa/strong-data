@@ -1,85 +1,69 @@
-# strong-data
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/wordmark-on-dark.png">
+    <img src="docs/images/wordmark-on-light.png" alt="strong-data" width="260">
+  </picture>
+</p>
 
-Self-hosted Strong workout CSV import with a private SQLite database, a
-server-rendered web UI, and a versioned, owner-scoped bearer-token JSON API.
+Self-hosted import of your Strong workout CSV into a private SQLite database, with
+a server-rendered web UI and a read-only JSON API.
 
-## Stack
+Strong has no API and no way to get your training history out except its own CSV
+export. This app imports that export, keeps it in one SQLite file you own, and
+turns it into something you can read: sessions, per-exercise progress, personal
+records, muscle-group corrections and a token-authenticated API.
 
-- Python 3.14, Django 5.2 LTS, django-ninja, uv, ruff
-- SQLite only; server-rendered Django templates, no CDN and no SPA
-- Non-root container, no published ports by default (traffic arrives via a TLS
-  reverse proxy), read-only root filesystem, all capabilities dropped
-- Released images for `linux/amd64` and `linux/arm64`; no external database, no
-  sidecar container, no CDN, no telemetry
+- One container, one database file: no external services, no sidecar, no
+  telemetry, nothing loaded from a CDN
+- Idempotent import: confirming an export replaces what is stored instead of
+  duplicating it
+- Read-only, versioned, owner-scoped API with a generated OpenAPI reference
 
-## Run with Docker
+## What it looks like
 
-Requires Docker Engine 24+ with a current Docker Compose release, and a TLS
-reverse proxy.
+**Sessions** are the home page: newest first, one row per workout, opened to its
+sets with weight, reps, RPE, volume and estimated 1RM, grouped per exercise. Text,
+program and date filters narrow the list.
+
+![The sessions page: a legs workout expanded into one table per exercise](docs/images/sessions.png)
+
+**Importing** is always two steps. The preview lists the sessions in the file, a
+sample of their sets, and every row that would be skipped or blanked together with
+the reason — so a bad export is caught before it replaces anything.
+
+![The import preview: five warnings grouped by cause above the sessions in the file](docs/images/import-preview.png)
+
+## Quick start
+
+Docker Engine 24+ with a current Compose release, on `amd64` or `arm64`, behind a
+TLS-terminating reverse proxy.
 
 ```sh
-docker pull ghcr.io/martinwa/strong-data:latest
-# or build from this working copy instead:
-#   docker build --target production -t strong-data:local .
-#   and set STRONG_IMAGE=strong-data:local in .env
-
 mkdir -p data && sudo chown -R 1000:1000 data
-cp .env.example .env      # STRONG_SECRET_KEY and STRONG_ALLOWED_HOSTS; the example
-                          # already sets STRONG_TRUSTED_PROXY=*
+cp .env.example .env       # set STRONG_SECRET_KEY and STRONG_ALLOWED_HOSTS
 docker compose up -d
-docker network connect strong-data caddy   # your proxy, forwarding to web:8000
 ```
 
-The database lives in `./data` on the host, so backups are plain files. If your
-proxy runs on the host instead of in a container, add the loopback port with
-`-f compose.host-port.yaml`. To build from this working copy rather than pull a
-release, add `-f compose.local-build.yaml`, which builds and tags `strong-data:local`. All
-variables, both proxy patterns and the upgrade path are in `docs/deployment.md`.
-
-For a local dev server with no `.env` required:
-
-```sh
-docker compose -f compose.development.yaml up --build
-```
+Then attach your proxy to the `strong-data` network, forward it to `web:8000`,
+[create the first account](docs/deployment.md#accounts) and log in.
+[Deployment](docs/deployment.md) covers every variable, both proxy patterns,
+upgrades and backups.
 
 ## Documentation
 
-- `docs/usage.md` — using the app
-- `docs/development.md` — local development
-- `docs/deployment.md` — reverse-proxy deployment and Compose
-- `docs/backup-and-recovery.md` — backing up and restoring SQLite
-- `docs/data-model.md` — tables and derived fields
-- `docs/api.md` — API auth, envelope, guardrails and derived-number definitions
-- `SECURITY.md` — security policy and vulnerability reporting
-- `CONTRIBUTING.md` — contribution workflow
-- `CLA.md` — contributor license agreement, signature required before a first merge
-- `LICENSE` / `NOTICE` — PolyForm Noncommercial 1.0.0
-
-## Roadmap and status
-
-Work is delivered in phases, in order:
-
-- **P0 — Scaffold and hygiene**: repository layout, pinned tooling, CI, ignore rules
-  and the private-data guard.
-- **P1 — Parse and store**: CSV parsing, models and migrations, and the import flow.
-- **P2 — API**: the versioned, owner-scoped JSON API and its published contract.
-- **P3 — Package and operate** (complete): container with dev-only tooling excluded from
-  the production image, compose files, deployment and backup docs, version/footer links,
-  API reference, hardened CI (lockfile, dependency and image auditing) and an attested
-  tag-based release pipeline to GHCR.
-- **P4 — Verification** (complete): end-to-end checks on synthetic data, a PII and
-  secret scan, and confirmation that every documented command passes without the
-  private reference export.
-
-Target the current phase and discuss larger changes in an issue first. The detailed
-working plan is private; this summary and the linked docs are the public source of truth.
+- [Using the app](docs/usage.md)
+- [Deployment](docs/deployment.md) — variables, reverse proxy, upgrades
+- [Backup and recovery](docs/backup-and-recovery.md)
+- [API](docs/api.md) — the interactive reference is served at `/api/v1/docs`
+- [Development](docs/development.md), [contributing](CONTRIBUTING.md) and the
+  [security policy](SECURITY.md)
 
 ## License
 
-PolyForm Noncommercial 1.0.0 — source-available, not OSI open source. Anyone may
-run, modify and share it for any noncommercial purpose, including a home lab, a
-nonprofit or research use. Commercial use requires a separate license: open an
-topic in this repository's Discussions to arrange one. See `LICENSE` and `NOTICE`.
+PolyForm Noncommercial 1.0.0: source-available, not OSI open source. Run, modify
+and share it for any noncommercial purpose, including a home lab, a nonprofit or
+research use. Commercial use needs a separate license, arranged through this
+repository's Discussions. See [LICENSE](LICENSE) and [NOTICE](NOTICE).
 
-Contributions are accepted under `CLA.md`, which keeps your copyright and grants
-the project the rights that dual licensing needs.
+Contributions are accepted under the [CLA](CLA.md), which keeps your copyright and
+grants the project the rights that dual licensing needs.

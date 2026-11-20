@@ -16,16 +16,8 @@ Instructions for automated agents working in this repository.
 
 ## Commands
 
-Run from the repository root. Python is pinned by `.python-version` (3.14).
-
-```sh
-uv sync --frozen
-uv lock --check
-uv run pytest -q
-uv run ruff check .
-uv run ruff format --check .
-uv run python tools/check_no_private_data.py
-```
+Run from the repository root. Python is pinned by `.python-version` (3.14). The
+local check commands are listed in `docs/development.md`.
 
 Container-based verification (matches CI's Linux environment). The development
 stack builds the `development` target and runs every check inside it:
@@ -56,7 +48,8 @@ docker run --rm --network none --read-only --cap-drop ALL \
 - `tools/` — repository scripts (hygiene guard, dev entrypoint, production check,
   image audit, release publisher)
 - `tests/` — `parsing/`, `import/`, `api/`, `browser/`, `fixtures/`
-- `docs/` — usage, development, deployment, backup/recovery, data model, API
+- `docs/` — usage, deployment, backup/recovery, development, API
+- `planning/` — private working notes (never committed)
 - `.github/workflows/ci.yml` — lint, test and hygiene checks in the development
   container, plus dependency and production-image auditing
 - `.github/workflows/release.yml` — tag-based image publishing with attestations

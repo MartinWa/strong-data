@@ -1,192 +1,126 @@
 # Usage
 
-How to get a Strong CSV export into strong-data and read it back.
+Getting a Strong CSV export into strong-data, and reading it back.
 
 ## Accounts
 
-Accounts are administrator-managed; there is no public signup. Log in at
-`/accounts/login/` with the credentials your administrator created. Every page
-except the login form requires a session, and every user
-sees only their own imports, corrections and tokens.
-
-## Get the CSV out of Strong
-
-strong-data reads Strong's workouts CSV. Strong has no signup and no API for
-this data, so the export is the only way in:
-
-1. Open the Strong app and go to your profile or its settings screen.
-2. Choose **Export workouts** (some versions label it **Export data**) and export
-   the CSV.
-3. Save the file, then choose it on `/upload/`; the preview opens as soon as the
-   file is chosen.
-
-The upload page carries the same three steps, so the export instructions are
-available at the point of use.
+Accounts are created by an administrator; see [accounts](deployment.md#accounts)
+for how the first one is made. Log in at `/accounts/login/` with the credentials
+you were given. Every page needs a session, and you only ever see your own
+imports, corrections and tokens.
 
 ## Import an export
 
-1. **Upload** (`/upload/`) — choose the CSV file Strong exported. Choosing it
-   submits the upload and opens the preview; with JavaScript off the page keeps a
-   *Preview* button instead. A pick larger than 10 MB is refused in the browser,
-   beside the field, before anything is sent, so the chosen file is never lost to
-   a round trip. The file must be a Strong export with the `Date`, `Workout Name`,
-   `Exercise Name`, `Set Order`, `Weight` and `Reps` headers, and at most 10 MB.
-   Extra columns are ignored; `Duration`, `Distance`, `Seconds` and `RPE` are used
-   when present. Nothing on this page talks about replacement: the import is only
-   described once, on the preview page.
-2. **Preview** (`/preview/`) — review the session summary (date, workout,
-   program, set count, volume, duration), the first 20 sets as a sample, and any
-   warnings, then press *Confirm import*. Both tables are newest first, like the
-   Sessions page, so the newest session is the first row and the sample starts
-   with its sets. The sample is grouped by exercise, each group headed by the
-   exercise name and its set count; the date and workout name label the first
-   group of each session, so a sample that runs into an older workout is not
-   ambiguous. The summary covers every session; only the set table is
-   sampled, and confirming imports all sets. Sessions beyond the first 10 are
-   behind *Show all* so the confirm bar stays in reach. The sticky
-   bar at the bottom states what confirming replaces (`Confirming replaces 14
-   sessions and 99 sets currently stored.`) or, on an empty account, that this is
-   the first import. *Cancel* next to it throws the preview away: the staged file
-   is deleted straight away instead of waiting for the scheduled sweep, and nothing
-   is imported. Uploading again replaces an earlier preview the same way.
-3. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 sessions
-   per page. Each row expands to show its sets.
+Strong has no API for training history, so its CSV export is the only way in. The
+upload page repeats these steps where you need them.
 
-The preview is tied to the file you uploaded: if you upload again, the old
-preview is discarded and you must confirm the new one. A pending preview expires
-after one hour. The uploaded file is never stored in your session; it is deleted
-when you confirm or discard the preview, and expired files are swept whenever you
-next upload or open the preview or sessions pages.
+1. **In the Strong app**, open your profile or its settings, choose **Export
+   workouts** (some versions call it **Export data**) and save the CSV.
+2. **Upload** (`/upload/`) — choose the file. It must be the CSV Strong exports
+   and at most 10 MB; columns the app does not read are ignored. Choosing it opens
+   the preview.
+3. **Preview** (`/preview/`) — check the sessions, a sample of sets, and any
+   warnings, then choose *Confirm import*. Confirming imports the whole file, not
+   only the sampled sets. *Cancel* throws the preview away and nothing is
+   imported; uploading again replaces the pending preview. An unconfirmed preview
+   expires after one hour.
+4. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 per page.
+   Open a row to see its sets.
 
-### Confirming replaces your existing data
+![The preview page: warnings grouped by cause, the sessions in the file and the replace notice](images/import-preview.png)
 
-Confirming an import **replaces everything you previously imported**. In one
-transaction the app deletes all of your sessions, sets and exercises and inserts
-the contents of the new export. This is deliberate: it makes an import
-idempotent, so re-uploading the same export leaves exactly the same data instead
-of duplicating it.
+### Confirming replaces your previous data
 
-Two consequences:
+An import **replaces everything you previously imported**: sessions, sets and
+exercise names are deleted and rebuilt from the file in one transaction. That
+makes re-importing the same export idempotent instead of duplicating it, and it
+means you should upload the **complete** export every time — a partial export
+removes everything that is not in it.
 
-- Upload the **complete** export each time. A partial export removes everything
-  that is not in it.
-- Muscle-group corrections are the exception: they are stored per exercise name
-  and survive re-imports, including corrections for exercises that are absent
-  from the new export.
+Muscle-group corrections are the exception: they are stored per exercise name and
+survive imports, including corrections for exercises the new export does not
+contain.
 
 ## Warnings
 
-Some problems reject the file at upload; others are reported per row in the
-preview and do not stop the import.
+Some files are rejected at upload; individual bad rows are reported on the preview
+and skipped or blanked instead of failing the import.
 
 | Problem | Result |
 | --- | --- |
-| Missing required headers, empty file, unreadable CSV | Rejected at upload |
-| No importable rows | Rejected at upload |
-| Invalid date, missing workout and exercise name, invalid or fractional set order or reps | Row skipped, warning shown |
-| Negative weight | Row skipped, warning shown |
-| Invalid or out-of-range weight, distance or seconds | Value stored as null, warning shown |
-| Negative distance or seconds | Value stored as null, warning shown |
-| RPE outside 6.0–10.0 or not in 0.5 steps | Stored as null, warning shown |
-| Duration that cannot be parsed | Stored as null |
+| Missing required columns, empty or unreadable file, no importable rows | Rejected at upload |
+| Invalid date, both the workout and exercise name missing, invalid set order or reps | Row skipped, warning |
+| Negative weight | Row skipped, warning |
+| Invalid weight, distance or seconds | Stored empty, warning |
+| Negative distance or seconds | Stored empty, warning |
+| RPE outside 6.0–10.0 or not in 0.5 steps | Stored empty, warning |
+| Duration that cannot be parsed | Stored empty |
 
-Skipped rows are never silently dropped: each one is counted in the preview's
-warning list. The preview reports how many warnings were raised and how many rows
-they affect, since one row can raise more than one warning. Warnings are grouped by
-cause with a count, and each group expands to the first 20 CSV line numbers plus how
-many further lines share that cause.
+A row is skipped only when both names are missing. If just one is missing it is
+imported as `Workout` or `Unknown`, without a warning, so check the preview for
+those names.
 
-A `Weight` of `0` is treated as bodyweight, exactly like an empty `Weight`: the
-set is stored with no weight, contributes no volume and appears in bodyweight
+Warnings are grouped by cause with a count, and each group lists the first 20 CSV
+line numbers affected. A `Weight` of `0` is bodyweight, exactly like an empty
+`Weight`: no weight is stored, it adds no volume, and it appears in bodyweight
 records.
 
 ## Sessions
 
-`/sessions/` lists your sessions newest first. Each row is collapsed to the date,
-workout name, program and totals; open it to see the sets with weight, reps, RPE,
-volume and estimated 1RM. Sets are grouped per exercise, with the number of sets
-and a set number that restarts at 1 for each exercise, so a lift performed in
-several blocks reads as one group instead of duplicate rows. The program is only
-shown when it differs from the workout name. It shows what is currently stored,
-so after a replacement import it shows only the new export.
+`/sessions/` lists your sessions newest first with date, workout, program and
+totals. Open a row for its sets with weight, reps, RPE, volume and estimated 1RM,
+grouped per exercise with set numbering restarting at 1 for each exercise. It
+shows what is stored now, so after a replacement import it shows only the new
+export.
 
-Three filters narrow the list: a free-text search matching the workout name or an
-exercise name, a program dropdown, and an optional date range. Filters combine,
-apply to whole sessions (a matched session still shows all of its sets), and are
-kept when you page. Changing any control applies the filters immediately — the
-search waits for a short typing pause and pauses while an input method (IME) is
-composing, so Japanese, Chinese or Korean input is never interrupted — and
-*Clear* removes all of them. The *Filter* button is only needed when JavaScript
-is unavailable.
+Three filters narrow the list: text matching the workout *or* an exercise name, a
+program dropdown, and an optional date range. They combine, apply to whole
+sessions (a matched session still shows all of its sets) and survive paging;
+*Clear* removes them. Search is a case-insensitive substring match on the stored
+names, so a search does not fold scripts and a hiragana query does not find a
+katakana exercise name.
 
-Search is a case-insensitive substring match on the stored names; it does not
-fold scripts, so a hiragana query does not find a katakana exercise name.
+*Delete all sessions* at the bottom of the page deletes every session and set for
+your account after a second confirmation. Corrections and tokens are kept, so a
+later import reuses your corrections instead of re-guessing them.
 
-`/history/` permanently redirects to `/sessions/`, keeping any query string, so
-an old `/history/?page=2` bookmark still lands on the same page. `/corrections/`
-permanently redirects to `/muscles/` for the same reason.
-
-*Delete all sessions* at the bottom of the page removes every session and set
-stored for your account after a second confirmation click. Muscle-group
-corrections and API tokens are kept, so a later import reuses your corrections
-instead of re-guessing them. There is nothing to export from the app: the Strong
-CSV you imported is the export, and sending it again reproduces the data.
+There is nothing to export from the app: the Strong CSV you imported is the
+export, and sending it again reproduces the data.
 
 ## Muscles
 
-New exercise names get a heuristic muscle-group guess at import time. Correct any
-guess on the *Muscles* screen (`/muscles/`); the correction applies to
-that exercise name for your account and is preserved by later imports. The page
-lists the exercise names you have imported, 100 per page, and saves the rows you
-edited on that page with a single *Save all*, which appears as soon as anything
-differs from what is stored and leaves you where you were; *Cancel* puts every
-row on the page back without saving. Paging is the unit of saving as well as of
-display, so a long list never turns into an oversized submission. Each row offers one alphabetical, deduplicated list of the heuristic's
-groups plus every group you already use, so a group you invented earlier is one
-click away. `Custom…` swaps the list for a text field in the same spot, where any
-name is accepted (for example `Forearms` or `Traps`); the small ✕ returns to the
-list. Names are matched case-insensitively against the list, so `chest` is stored
-as `Chest` rather than becoming a second group. The upgrade migration merges case
-and whitespace duplicates that an older version of the app allowed.
+Each new exercise name gets a guessed muscle group at import. Correct guesses on
+`/muscles/`: a correction applies to that exercise name for your account and is
+preserved by later imports.
 
-A *Custom groups* card below the table lists the groups you named yourself and
-how many exercises use each. Deleting one reverts those exercises to the guessed
-group, after a second confirmation click. Groups the heuristic provides are not
-listed, because they would come back with the next import. Exercises the
-heuristic cannot place are grouped under `Other`. The heuristic matches English
-exercise names, so names in other languages usually fall back to `Other` and are
-worth correcting by hand.
+![The muscles page: one row per exercise with the guessed or corrected muscle group](images/muscles.png)
+
+The page lists 100 names at a time; edit the rows you want and choose *Save all*,
+which appears once anything differs from what is stored and saves the rows on that
+page. *Cancel* reverts the page.
+
+Each row offers the guessed groups plus every group you already use, so a group
+you invented earlier is one click away. *Custom…* accepts any name (for example
+`Forearms`), and names match case-insensitively, so `chest` is stored as `Chest`
+rather than as a second group. A *Custom groups* card lists the groups you named
+and how many exercises use each; deleting one reverts those exercises to the
+guessed group. Guessed groups are not listed, because the next import would bring
+them back. Exercises the guess cannot place are grouped under `Other`; the guess
+matches English exercise names, so names in other languages usually need
+correcting by hand.
 
 ## API tokens
 
-The JSON API is read-only and authenticated with a bearer token. Create one on
-the *Tokens* screen (`/tokens/`):
-
-- Give the token a name; names are unique per account.
-- The secret is displayed **once**, at creation. Copy it then — only a SHA-256
-  hash and an 8-character display prefix are stored.
-- Revoke a token at any time; revocation takes effect on the next request.
-- Set an optional expiry when you create the token; the API rejects the token
-  from that moment on.
-
-Send the secret on every request:
+The API is read-only and authenticated with a bearer token, created on `/tokens/`:
+give it a name, copy the secret when it is shown (it is displayed once) and
+optionally set an expiry. Revoke a token at any time; revocation takes effect on
+the next request.
 
 ```sh
 curl -fsS -H "Authorization: Bearer <secret>" \
   https://workouts.example.com/api/v1/summary
 ```
 
-`GET /api/v1/healthz` is the only anonymous endpoint. The generated OpenAPI
-schema is at `/api/v1/openapi.json` and the Swagger UI that renders it is at
-`/api/v1/docs`; both open in the browser once you are logged in, and both accept
-a bearer token from a client. `docs/api.md` covers the conventions the schema
-cannot express: auth, the envelope, guardrails and the derived-number
-definitions.
-
-## Limits
-
-- Uploads are capped at 10 MB.
-- API collections default to `limit=50`, maximum 200; `offset` must be `>= 0`.
-- API date ranges must satisfy `start <= end` and span at most about five years.
-- Invalid API parameters return `422` with the error envelope; nothing is
-  silently clamped.
+The interactive reference is at `/api/v1/docs` once you are logged in. [API](api.md)
+covers what the schema cannot express: authentication, the response envelope,
+guardrails and every derived number.

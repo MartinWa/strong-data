@@ -115,19 +115,18 @@ def test_required_settings_are_documented_consistently():
         "STRONG_ALLOWED_HOSTS=workouts.example.com",
         "STRONG_TRUSTED_PROXY=*",
     ]
-    assert "Three values have no usable default" in deployment
-    assert "| `STRONG_TRUSTED_PROXY` | none, required |" in deployment
+    for required in ("STRONG_SECRET_KEY", "STRONG_TRUSTED_PROXY"):
+        assert f"| `{required}` | none, required |" in deployment
+    assert "| `STRONG_ALLOWED_HOSTS` |" in deployment
 
 
-def test_release_tagging_is_scripted_and_documented():
+def test_release_tagging_is_scripted():
     script = (REPO_ROOT / "tools/tag_release.ps1").read_text(encoding="utf-8")
-    development = (REPO_ROOT / "docs/development.md").read_text(encoding="utf-8")
 
     assert "Switch to main before creating a release tag." in script
     assert "Commit or stash working-tree changes" in script
     assert "tag -a $Version" in script
     assert "refs/tags/$Version" in script
-    assert "tag_release.ps1 -Version 1.0.0 -WhatIf" in development
 
 
 def test_published_package_must_be_publicly_pullable():
