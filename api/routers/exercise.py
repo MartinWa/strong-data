@@ -1,3 +1,5 @@
+from typing import Literal
+
 from ninja import Router
 
 from ..contract import envelope
@@ -19,9 +21,10 @@ def exercise_progress(
     name: str,
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
+    group_by: Literal["day", "session"] = StrictQuery("day"),
 ):
     validate_date_range(start, end)
-    return {**envelope(), **progress_data(request.auth, name, start, end)}
+    return {**envelope(), **progress_data(request.auth, name, start, end, group_by)}
 
 
 @router.get(

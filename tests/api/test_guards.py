@@ -183,7 +183,11 @@ def test_strict_typed_parameters(client, auth):
         "/sets?sort=unknown",
         "/summary?start=2026-02-01&end=2026-01-01",
         "/summary?start=2010-01-01&end=2020-01-01",
-        "/sets?limit=201",
+        "/sets?limit=1001",
+        "/exercises/Bench%20Press%20(Barbell)/progress?group_by=week",
+        "/records/est-1rm?start=2026-02-01&end=2026-01-01",
+        "/records/bodyweight?limit=5",
+        "/yearly?start=2026-01-01",
     ]
     for query in bad_queries:
         assert_error(auth.get(BASE + query), 422, "validation_error")

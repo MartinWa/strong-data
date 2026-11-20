@@ -4,6 +4,7 @@ import pytest
 from django.contrib.auth import get_user_model
 
 from api.contract import CONTRACT_VERSION
+from tests.api.conftest import make_user
 from workouts.models import ApiToken
 
 BASE = "/api/v1"
@@ -141,6 +142,8 @@ def test_exercise_endpoints(auth):
     assert progress == [
         {
             "date": "2026-01-05",
+            "session_id": None,
+            "sets": 2,
             "best_est_1rm_kg": 93.33,
             "top_weight_kg": 82.5,
             "max_reps": 5,
@@ -148,6 +151,8 @@ def test_exercise_endpoints(auth):
         },
         {
             "date": "2026-02-02",
+            "session_id": None,
+            "sets": 1,
             "best_est_1rm_kg": 99.17,
             "top_weight_kg": 85.0,
             "max_reps": 5,
@@ -156,7 +161,10 @@ def test_exercise_endpoints(auth):
     ]
 
     records = auth.get(BASE + f"/exercises/{name}/records").json()["items"]
-    assert [(row["reps"], row["top_weight_kg"]) for row in records] == [(3, 82.5), (5, 85.0)]
+    assert [(row["reps"], row["set_count"], row["top_weight_kg"]) for row in records] == [
+        (3, 1, 82.5),
+        (5, 2, 85.0),
+    ]
 
     sets = auth.get(BASE + f"/exercises/{name}/sets").json()
     assert sets["count"] == 3
@@ -289,3 +297,94 @@ def test_owner_scoping_every_endpoint(client, bob):
     assert client.get(BASE + "/programs", **headers).json()["items"] == ["Secret Session"]
     assert client.get(BASE + "/exercises", **headers).json()["items"] == ["Squat (Barbell)"]
     assert client.get(BASE + "/sessions", **headers).json()["count"] == 1
+
+
+def test_program_filters_series_breakdowns_and_yearly(auth):
+    volume = auth.get(BASE + "/series/volume?bucket=week&program=Pull%20Day").json()
+    assert volume["items"] == [
+        {"bucket_start": "2026-01-05", "value": 600.0, "groups": None, "value_4wma": None}
+    ]
+
+    sessions = auth.get(
+        BASE + "/series/sessions?bucket=week&group_by=program&program=Push%20Day"
+    ).json()
+    assert [item["value"] for item in sessions["items"]] == [1.0, 0.0, 0.0, 0.0, 1.0]
+    assert sessions["items"][0]["groups"] == [{"key": "Push Day", "value": 1.0}]
+
+    muscle = auth.get(BASE + "/breakdown/muscle?program=Push%20Day").json()
+    assert [
+        (row["key"], row["sessions"], row["sets"], row["volume_kg"]) for row in muscle["items"]
+    ] == [("Chest", 2, 4, 1072.5), ("Shoulders", 1, 1, 320.0)]
+
+    weekday = auth.get(BASE + "/breakdown/weekday?program=Pull%20Day").json()
+    assert [row["sessions"] for row in weekday["items"]] == [0, 0, 1, 0, 0, 0, 0]
+
+    yearly = auth.get(BASE + "/yearly?program=Pull%20Day").json()
+    assert yearly["items"] == [
+        {
+            "year": 2026,
+            "sessions": 1,
+            "sets": 2,
+            "volume_kg": 600.0,
+            "volume_t": 0.6,
+            "hours": 1.03,
+        }
+    ]
+
+
+def test_records_accept_range_and_program(auth):
+    est = auth.get(BASE + "/records/est-1rm?start=2026-02-01&program=Push%20Day").json()
+    assert [(row["exercise"], row["est_1rm_kg"]) for row in est["items"]] == [
+        ("Bench Press (Barbell)", 99.17),
+        ("Overhead Press", 50.67),
+    ]
+
+    bodyweight = auth.get(BASE + "/records/bodyweight?program=Pull%20Day").json()
+    assert [row["exercise"] for row in bodyweight["items"]] == ["Pull Up"]
+
+
+def test_progress_can_group_by_session(auth):
+    items = auth.get(
+        BASE + "/exercises/Bench%20Press%20(Barbell)/progress?group_by=session"
+    ).json()["items"]
+    assert [(row["date"], row["sets"]) for row in items] == [("2026-01-05", 2), ("2026-02-02", 1)]
+    assert all(row["session_id"] is not None for row in items)
+    assert items[0]["session_id"] != items[1]["session_id"]
+
+
+def test_pace_curve_stops_at_the_cutoff(auth):
+    curve = auth.get(BASE + "/yearly/pace?year=2026&as_of=2026-03-01").json()["curve"]
+    assert len(curve) == 60
+    assert curve[0] == {
+        "year": 2026,
+        "date": "2026-01-01",
+        "day_of_year": 1,
+        "sessions": 0,
+        "cumulative_sessions": 0,
+        "cumulative_volume_kg": 0.0,
+    }
+    assert curve[-1]["date"] == "2026-03-01"
+    assert curve[-1]["day_of_year"] == 60
+    assert curve[-1]["cumulative_sessions"] == 3
+    assert curve[-1]["cumulative_volume_kg"] == 1992.5
+    assert [row["day_of_year"] for row in curve if row["sessions"]] == [5, 7, 33]
+
+
+@pytest.mark.django_db
+def test_pace_curve_covers_full_earlier_years(client):
+    csv_text = (
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2025-06-01 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
+        "2026-01-05 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
+    )
+    make_user("carol", csv_text, "synthetic-token-for-carol")
+    client.defaults["HTTP_AUTHORIZATION"] = "Bearer synthetic-token-for-carol"
+
+    curve = client.get(BASE + "/yearly/pace?year=2026&as_of=2026-01-10").json()["curve"]
+    assert len(curve) == 365 + 10
+    assert [row["year"] for row in curve[:365]] == [2025] * 365
+    assert curve[364]["day_of_year"] == 365
+    assert curve[364]["cumulative_sessions"] == 1
+    assert curve[-1]["year"] == 2026
+    assert curve[-1]["day_of_year"] == 10
+    assert curve[-1]["cumulative_sessions"] == 1

@@ -9,7 +9,7 @@ logger = logging.getLogger("django")
 
 CONTRACT_VERSION = "1.0"
 MAX_RANGE_DAYS = 1830
-MAX_LIMIT = 200
+MAX_LIMIT = 1000
 MAX_BODY_BYTES = 10 * 1024 * 1024
 API_PREFIX = "/api/v1/"
 

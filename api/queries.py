@@ -190,7 +190,7 @@ def validate_series_options(metric, bucket, group_by, moving_average):
         raise ApiError(422, "validation_error", "moving_average requires bucket=week")
 
 
-def series_data(user, metric, bucket, group_by, start, end, moving_average):
+def series_data(user, metric, bucket, group_by, start, end, moving_average, program):
     validate_series_options(metric, bucket, group_by, moving_average)
     mapping = muscle_map(user)
 
@@ -213,7 +213,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average):
         return mapping.get(item.exercise.name, "Other")
 
     if metric in {"sessions", "training-time", "volume-per-session"}:
-        for session in owned_sessions(user, start=start, end=end):
+        for session in owned_sessions(user, start=start, end=end, program=program):
             bucket_key = bucket_start(session.session_date, bucket)
             entry = acc[bucket_key]
             entry["sessions"].add(session.id)
@@ -234,7 +234,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average):
                 entry["groups"][key]["sessions"].add(session.id)
                 all_groups.add(key)
     else:
-        for item in owned_sets(user, start=start, end=end):
+        for item in owned_sets(user, start=start, end=end, program=program):
             bucket_key = bucket_start(item.session.session_date, bucket)
             entry = acc[bucket_key]
             volume = float(item.volume_kg)
@@ -299,13 +299,13 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average):
     return {"bucket": bucket, "group_by": group_by, "count": len(items), "items": items}
 
 
-def breakdown_data(user, dimension, start, end, limit):
+def breakdown_data(user, dimension, start, end, limit, program):
     if dimension in {"weekday", "program"}:
         buckets = defaultdict(lambda: {"sessions": 0, "sets": 0, "volume": Decimal(0)})
         if dimension == "weekday":
             for name in WEEKDAYS:
                 buckets[name]
-        for session in owned_sessions(user, start=start, end=end):
+        for session in owned_sessions(user, start=start, end=end, program=program):
             key = (
                 WEEKDAYS[session.session_date.weekday()]
                 if dimension == "weekday"
@@ -318,7 +318,7 @@ def breakdown_data(user, dimension, start, end, limit):
     else:
         mapping = muscle_map(user)
         buckets = defaultdict(lambda: {"session_ids": set(), "sets": 0, "volume": Decimal(0)})
-        for item in owned_sets(user, start=start, end=end):
+        for item in owned_sets(user, start=start, end=end, program=program):
             key = (
                 mapping.get(item.exercise.name, "Other")
                 if dimension == "muscle"
@@ -350,19 +350,38 @@ def breakdown_data(user, dimension, start, end, limit):
     return {"count": len(rows), "items": items}
 
 
-def progress_data(user, name, start, end):
-    by_date = defaultdict(list)
-    for item in owned_sets(user, start=start, end=end, exercise=name):
-        by_date[item.session.session_date].append(item)
+PROGRESS_GROUP_BY = frozenset({"day", "session"})
 
+
+def validate_progress_options(group_by):
+    if group_by not in PROGRESS_GROUP_BY:
+        raise ApiError(
+            422,
+            "validation_error",
+            f"group_by={group_by} is not supported for exercise progress",
+        )
+
+
+def progress_data(user, name, start, end, group_by):
+    validate_progress_options(group_by)
+    grouped = defaultdict(list)
+    for item in owned_sets(user, start=start, end=end, exercise=name):
+        key = item.session_id if group_by == "session" else item.session.session_date
+        grouped[key].append(item)
+
+    ordered = sorted(
+        grouped.items(),
+        key=lambda entry: (entry[1][0].session.session_date, entry[0]),
+    )
     items = []
-    for day in sorted(by_date):
-        entries = by_date[day]
+    for key, entries in ordered:
         estimates = [item.est_1rm_kg for item in entries if item.est_1rm_kg is not None]
         weights = [item.weight_kg for item in entries if item.weight_kg is not None]
         items.append(
             {
-                "date": day.isoformat(),
+                "date": entries[0].session.session_date.isoformat(),
+                "session_id": key if group_by == "session" else None,
+                "sets": len(entries),
                 "best_est_1rm_kg": round2(max(estimates)) if estimates else None,
                 "top_weight_kg": round2(max(weights)) if weights else None,
                 "max_reps": max(item.reps for item in entries),
@@ -390,6 +409,7 @@ def exercise_record_data(user, name, start, end):
         items.append(
             {
                 "reps": reps,
+                "set_count": len(by_reps[reps]),
                 "top_weight_kg": maybe_round2(best.weight_kg),
                 "best_est_1rm_kg": maybe_round2(best.est_1rm_kg),
                 "volume_kg": round2(best.volume_kg),
@@ -399,9 +419,9 @@ def exercise_record_data(user, name, start, end):
     return {"count": len(items), "items": items}
 
 
-def est_1rm_record_data(user):
+def est_1rm_record_data(user, start, end, program):
     by_exercise = defaultdict(list)
-    for item in owned_sets(user):
+    for item in owned_sets(user, start=start, end=end, program=program):
         if item.est_1rm_kg is not None:
             by_exercise[item.exercise.name].append(item)
 
@@ -429,9 +449,9 @@ def est_1rm_record_data(user):
     return {"count": len(items), "items": items}
 
 
-def bodyweight_record_data(user):
+def bodyweight_record_data(user, start, end, program):
     by_exercise = defaultdict(list)
-    for item in owned_sets(user):
+    for item in owned_sets(user, start=start, end=end, program=program):
         if item.weight_kg is None:
             by_exercise[item.exercise.name].append(item)
 
@@ -451,9 +471,9 @@ def bodyweight_record_data(user):
     return {"count": len(items), "items": items}
 
 
-def yearly_data(user):
+def yearly_data(user, program):
     buckets = defaultdict(lambda: {"sessions": 0, "sets": 0, "volume": Decimal(0), "duration": 0})
-    for session in owned_sessions(user):
+    for session in owned_sessions(user, program=program):
         entry = buckets[session.session_date.year]
         entry["sessions"] += 1
         entry["sets"] += session.set_count
@@ -502,21 +522,63 @@ def _cutoff(year, as_of):
     return date(year, as_of.month, day)
 
 
-def pace_data(user, year, as_of):
+def _pace_curve(user, years, focus_year, cutoff, program):
+    if not years:
+        return []
+    daily = defaultdict(lambda: {"sessions": 0, "volume": Decimal(0)})
+    for session in owned_sessions(user, start=date(min(years), 1, 1), end=cutoff, program=program):
+        entry = daily[session.session_date]
+        entry["sessions"] += 1
+        entry["volume"] += session.total_volume_kg
+
+    rows = []
+    for y in sorted(years):
+        start = date(y, 1, 1)
+        end = cutoff if y == focus_year else date(y, 12, 31)
+        if y > focus_year or end < start:
+            continue
+        cumulative_sessions = 0
+        cumulative_volume = Decimal(0)
+        current = start
+        while current <= end:
+            entry = daily.get(current)
+            if entry:
+                cumulative_sessions += entry["sessions"]
+                cumulative_volume += entry["volume"]
+            rows.append(
+                {
+                    "year": y,
+                    "date": current.isoformat(),
+                    "day_of_year": (current - start).days + 1,
+                    "sessions": entry["sessions"] if entry else 0,
+                    "cumulative_sessions": cumulative_sessions,
+                    "cumulative_volume_kg": round2(cumulative_volume),
+                }
+            )
+            current += timedelta(days=1)
+    return rows
+
+
+def pace_data(user, year, as_of, program):
     year_start = date(year, 1, 1)
     year_end = date(year, 12, 31)
     previous = year - 1
     cutoff = _cutoff(year, as_of)
 
     with transaction.atomic():
-        ytd = _totals(owned_sessions(user, start=year_start, end=cutoff))
+        ytd = _totals(owned_sessions(user, start=year_start, end=cutoff, program=program))
         last_ytd = _totals(
-            owned_sessions(user, start=date(previous, 1, 1), end=_cutoff(previous, as_of))
+            owned_sessions(
+                user, start=date(previous, 1, 1), end=_cutoff(previous, as_of), program=program
+            )
         )
         last_full = _totals(
-            owned_sessions(user, start=date(previous, 1, 1), end=date(previous, 12, 31))
+            owned_sessions(
+                user, start=date(previous, 1, 1), end=date(previous, 12, 31), program=program
+            )
         )
-        yearly = yearly_data(user)["items"]
+        yearly = yearly_data(user, program)["items"]
+        curve = _pace_curve(user, [row["year"] for row in yearly], year, cutoff, program)
 
     days_in_year = (year_end - year_start).days + 1
     elapsed = max(1, min((cutoff - year_start).days + 1, days_in_year))
@@ -553,6 +615,7 @@ def pace_data(user, year, as_of):
         "projected": projected,
         "needed_per_week": needed,
         "pace": pace,
+        "curve": curve,
     }
 
 

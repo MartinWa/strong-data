@@ -124,13 +124,10 @@ def test_exercise_names_with_slashes_are_reachable(client):
 @pytest.mark.parametrize(
     "path",
     [
-        "/records/est-1rm",
-        "/records/bodyweight",
         "/programs",
         "/exercises",
         "/muscle-groups",
         "/me",
-        "/yearly",
         "/healthz",
     ],
 )
@@ -205,7 +202,7 @@ def test_pace_reads_all_totals_in_one_transaction(auth):
     assert response.status_code == 200
     sql = [query["sql"].lower() for query in captured.captured_queries]
     reads = [i for i, query in enumerate(sql) if 'from "workouts_workoutsession"' in query]
-    assert len(reads) == 4
+    assert len(reads) == 5
     assert any(query.startswith("savepoint") and i < reads[0] for i, query in enumerate(sql))
     assert not any(
         query.startswith("release savepoint") and reads[0] < i < reads[-1]

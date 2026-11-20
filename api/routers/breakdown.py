@@ -8,10 +8,13 @@ from ..schemas import BreakdownOut
 router = Router()
 
 
-def _build(request, dimension, start, end, limit):
+def _build(request, dimension, start, end, limit, program):
     validate_date_range(start, end)
     validate_pagination(limit, 0)
-    return {**envelope(), **breakdown_data(request.auth, dimension, start, end, limit)}
+    return {
+        **envelope(),
+        **breakdown_data(request.auth, dimension, start, end, limit, program),
+    }
 
 
 @router.get(
@@ -22,8 +25,9 @@ def breakdown_weekday(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
+    program: str | None = StrictQuery(None),
 ):
-    return _build(request, "weekday", start, end, limit)
+    return _build(request, "weekday", start, end, limit, program)
 
 
 @router.get(
@@ -34,8 +38,9 @@ def breakdown_program(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
+    program: str | None = StrictQuery(None),
 ):
-    return _build(request, "program", start, end, limit)
+    return _build(request, "program", start, end, limit, program)
 
 
 @router.get(
@@ -46,8 +51,9 @@ def breakdown_muscle(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
+    program: str | None = StrictQuery(None),
 ):
-    return _build(request, "muscle", start, end, limit)
+    return _build(request, "muscle", start, end, limit, program)
 
 
 @router.get(
@@ -61,5 +67,6 @@ def breakdown_exercises(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
+    program: str | None = StrictQuery(None),
 ):
-    return _build(request, "exercises", start, end, limit)
+    return _build(request, "exercises", start, end, limit, program)
