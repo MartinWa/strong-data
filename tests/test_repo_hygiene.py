@@ -119,6 +119,26 @@ def test_required_settings_are_documented_consistently():
     assert "| `STRONG_TRUSTED_PROXY` | none, required |" in deployment
 
 
+def test_release_tagging_is_scripted_and_documented():
+    script = (REPO_ROOT / "tools/tag_release.ps1").read_text(encoding="utf-8")
+    development = (REPO_ROOT / "docs/development.md").read_text(encoding="utf-8")
+
+    assert "Switch to main before creating a release tag." in script
+    assert "Commit or stash working-tree changes" in script
+    assert "tag -a $Version" in script
+    assert "refs/tags/$Version" in script
+    assert "tag_release.ps1 -Version 1.0.0 -WhatIf" in development
+
+
+def test_published_package_must_be_publicly_pullable():
+    text = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "ghcr.io/token?scope=repository" in text
+    assert "-f visibility=public" in text
+    assert "secrets.PACKAGE_TOKEN || github.token" in text
+    assert "it is not public" not in text
+
+
 def test_release_checks_and_attests_each_platform():
     text = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
 

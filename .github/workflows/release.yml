@@ -186,3 +186,23 @@ jobs:
           else
             echo "Skipping latest: $RELEASE_TAG is not the current stable release."
           fi
+      # GHCR creates a package private even for a public repository, and published
+      # images are worthless to a home lab if nobody can pull them anonymously.
+      - name: Require the published package to be public
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.PACKAGE_TOKEN || github.token }}
+        run: |
+          owner=${GITHUB_REPOSITORY%/*}
+          package=${GITHUB_REPOSITORY#*/}
+          repository="${owner,,}/${package,,}"
+          api_path="users/${owner,,}/packages/container/${package,,}"
+          if [ "$(gh api "$api_path" --jq .visibility 2>/dev/null)" != public ]; then
+            gh api --method PATCH "$api_path" -f visibility=public >/dev/null 2>&1 || true
+          fi
+          if curl --fail --silent --output /dev/null "https://ghcr.io/token?scope=repository:${repository}:pull"; then
+            echo "ghcr.io/$repository is publicly pullable." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          echo "::error::ghcr.io/$repository is not public. Set its visibility once in the package settings, or add a PACKAGE_TOKEN secret with write:packages so this step can do it."
+          exit 1
