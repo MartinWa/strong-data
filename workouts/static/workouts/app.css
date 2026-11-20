@@ -1331,6 +1331,11 @@ input[type="file"]::file-selector-button:hover {
   margin-bottom: 1.25rem;
 }
 
+.secret:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .secret-label {
   margin: 0 0 0.4rem;
   font-size: 0.78rem;
@@ -1371,6 +1376,32 @@ input[type="file"]::file-selector-button:hover {
 
 .inline-form input {
   min-width: 9rem;
+}
+
+.row-confirm {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.row-confirm form {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  max-width: 20rem;
+}
+
+.row-confirm form[hidden] {
+  display: none;
+}
+
+.row-confirm form p {
+  margin: 0;
+  color: var(--muted);
+  text-align: left;
 }
 
 .section-title {
@@ -1435,6 +1466,70 @@ input[type="file"]::file-selector-button:hover {
 
   .table .secondary {
     display: none;
+  }
+
+  .table-cards,
+  .table-cards tbody,
+  .table-cards tr,
+  .table-cards td {
+    display: block;
+  }
+
+  .table-cards thead {
+    display: none;
+  }
+
+  .table-cards tbody tr {
+    padding: 0.4rem 0;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table-cards tbody tr:last-child {
+    border-bottom: 0;
+  }
+
+  .table-cards td,
+  .table-cards th,
+  .table-cards td.tight,
+  .table-cards th.tight {
+    width: auto;
+    white-space: normal;
+  }
+
+  .table-cards td {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.3rem 0.75rem;
+    padding: 0.3rem 0.8rem;
+    border-bottom: 0;
+  }
+
+  .table-cards td[data-label]::before {
+    content: attr(data-label);
+    font-size: 0.72rem;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .table-cards td[data-label="Name"] {
+    font-weight: 600;
+  }
+
+  .table-cards td[data-actions] {
+    display: block;
+    padding-top: 0.55rem;
+  }
+
+  .table-cards td[data-actions] > .row-confirm {
+    width: 100%;
+  }
+
+  .table-cards td[data-actions] > .row-confirm > .btn {
+    width: 100%;
   }
 }
 

@@ -23,4 +23,5 @@ urlpatterns = [
     ),
     path("tokens/", views.tokens, name="tokens"),
     path("tokens/<int:pk>/revoke/", views.revoke_token, name="revoke_token"),
+    path("tokens/<int:pk>/delete/", views.delete_token, name="delete_token"),
 ]

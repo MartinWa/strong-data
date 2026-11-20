@@ -333,35 +333,73 @@ def delete_group(request):
 def tokens(request):
     user_tokens = ApiToken.objects.filter(owner=request.user)
     secret = None
+    created_name = ""
     if request.method == "POST":
         form = TokenForm(request.POST, owner=request.user)
         if form.is_valid():
             try:
                 with transaction.atomic():
                     secret = secrets.token_urlsafe(32)
+                    created_name = form.cleaned_data["name"]
                     ApiToken.objects.create(
                         owner=request.user,
-                        name=form.cleaned_data["name"],
+                        name=created_name,
                         key_hash=hashlib.sha256(secret.encode()).hexdigest(),
                         prefix=secret[:8],
                         expires_at=form.cleaned_data["expires_at"],
                     )
             except IntegrityError:
                 secret = None
+                created_name = ""
                 form.add_error("name", "A token with this name already exists.")
             else:
-                messages.success(request, "Token created. Copy the secret now; it is shown once.")
+                messages.success(
+                    request,
+                    f"Created {created_name}. Copy the secret now; it is shown only once.",
+                )
+                form = TokenForm(owner=request.user)
     else:
         form = TokenForm(owner=request.user)
     return render(
         request,
         "workouts/tokens.html",
-        {"tokens": user_tokens, "form": form, "secret": secret},
+        {
+            "tokens": user_tokens,
+            "form": form,
+            "secret": secret,
+            "created_name": created_name,
+            "has_sessions": WorkoutSession.objects.filter(owner=request.user).exists(),
+        },
     )
 
 
 @login_required
 @require_POST
 def revoke_token(request, pk):
-    ApiToken.objects.filter(owner=request.user, pk=pk).update(revoked_at=timezone.now())
+    token = ApiToken.objects.filter(owner=request.user, pk=pk).first()
+    if token is None:
+        messages.error(request, "That token was not found.")
+        return redirect("tokens")
+    if token.revoked_at is not None:
+        messages.info(request, f"{token.name} was already revoked.")
+        return redirect("tokens")
+    token.revoked_at = timezone.now()
+    token.save(update_fields=["revoked_at"])
+    messages.success(request, f"Revoked {token.name}. Clients using it stop working now.")
+    return redirect("tokens")
+
+
+@login_required
+@require_POST
+def delete_token(request, pk):
+    token = ApiToken.objects.filter(owner=request.user, pk=pk).first()
+    if token is None:
+        messages.error(request, "That token was not found.")
+        return redirect("tokens")
+    if token.is_active:
+        messages.error(request, f"Revoke {token.name} first; a working token cannot be deleted.")
+        return redirect("tokens")
+    name = token.name
+    token.delete()
+    messages.success(request, f"Deleted {name}. That name can be used again.")
     return redirect("tokens")

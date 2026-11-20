@@ -199,7 +199,7 @@ def test_token_creation_and_revocation_are_owner_scoped(client):
     assert token.name == "reader"
     assert token.key_hash == hashlib.sha256(secret.encode()).hexdigest()
     assert token.prefix == secret[:8]
-    assert b"Secret:" in response.content
+    assert "Secret for reader" in response.content.decode()
 
     client.force_login(bob)
     client.post(reverse("revoke_token", args=[token.pk]))
@@ -210,6 +210,123 @@ def test_token_creation_and_revocation_are_owner_scoped(client):
     client.post(reverse("revoke_token", args=[token.pk]))
     token.refresh_from_db()
     assert token.revoked_at is not None
+
+
+@pytest.mark.django_db
+def test_created_token_clears_the_form_and_announces_the_secret(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    response = client.post(reverse("tokens"), {"name": "reader"})
+    content = response.content.decode()
+
+    assert not response.context["form"].is_bound
+    assert response.context["form"]["name"].value() is None
+    assert 'value="reader"' not in content
+    assert 'role="status" aria-live="polite" tabindex="-1"' in content
+    assert "shown only once" in content
+    assert "secretBox.focus()" in content
+
+    response = client.post(reverse("tokens"), {"name": "reader"})
+    assert b"already exists" in response.content
+
+
+@pytest.mark.django_db
+def test_token_rows_offer_a_two_step_revoke(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    client.post(reverse("tokens"), {"name": "reader"})
+    token = ApiToken.objects.get(owner=user)
+
+    content = client.get(reverse("tokens")).content.decode()
+    assert "data-row-confirm" in content
+    assert "Clients using reader stop working immediately." in content
+    assert "Delete" not in content
+    assert "data-row-start" in content
+    assert "data-row-cancel" in content
+    assert re.search(r"data-row-form hidden", content)
+    warning_id = f"revoke-warning-{token.pk}"
+    assert f'id="{warning_id}"' in content
+    assert f'aria-describedby="{warning_id}"' in content
+
+    content = client.get(f"{reverse('tokens')}?confirm={token.pk}").content.decode()
+    assert re.search(r"data-row-form>\s", content)
+    assert not re.search(r"data-row-form hidden", content)
+
+    response = client.post(reverse("revoke_token", args=[token.pk]), follow=True)
+    assert "Revoked reader. Clients using it stop working now." in response.content.decode()
+    token.refresh_from_db()
+    assert token.revoked_at is not None
+
+    response = client.post(reverse("revoke_token", args=[token.pk]), follow=True)
+    assert "reader was already revoked." in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_revoked_token_can_be_deleted_and_its_name_reused(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    client.post(reverse("tokens"), {"name": "reader"})
+    token = ApiToken.objects.get(owner=user)
+    client.post(reverse("revoke_token", args=[token.pk]))
+
+    content = client.get(reverse("tokens")).content.decode()
+    assert "Removes reader permanently" in content
+    assert f'id="delete-warning-{token.pk}"' in content
+    assert f'aria-describedby="delete-warning-{token.pk}"' in content
+
+    response = client.post(reverse("delete_token", args=[token.pk]), follow=True)
+    assert "Deleted reader. That name can be used again." in response.content.decode()
+    assert not ApiToken.objects.filter(owner=user).exists()
+
+    response = client.post(reverse("tokens"), {"name": "reader"})
+    assert response.context["secret"]
+    assert ApiToken.objects.filter(owner=user, name="reader").count() == 1
+
+
+@pytest.mark.django_db
+def test_active_token_cannot_be_deleted(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    client.post(reverse("tokens"), {"name": "reader"})
+    token = ApiToken.objects.get(owner=user)
+
+    response = client.post(reverse("delete_token", args=[token.pk]), follow=True)
+
+    assert "Revoke reader first" in response.content.decode()
+    assert ApiToken.objects.filter(pk=token.pk).exists()
+
+
+@pytest.mark.django_db
+def test_token_actions_require_post_and_are_owner_scoped(client):
+    alice = get_user_model().objects.create_user(username="alice", password="x")
+    bob = get_user_model().objects.create_user(username="bob", password="x")
+    client.force_login(alice)
+    client.post(reverse("tokens"), {"name": "reader"})
+    token = ApiToken.objects.get(owner=alice)
+    token.revoked_at = timezone.now()
+    token.save(update_fields=["revoked_at"])
+
+    assert client.get(reverse("delete_token", args=[token.pk])).status_code == 405
+
+    client.force_login(bob)
+    response = client.post(reverse("delete_token", args=[token.pk]), follow=True)
+    assert "That token was not found." in response.content.decode()
+    assert ApiToken.objects.filter(pk=token.pk).exists()
+
+
+@pytest.mark.django_db
+def test_tokens_empty_state_points_at_the_import_first(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    content = client.get(reverse("tokens")).content.decode()
+    assert "Import a CSV first, then create a token" in content
+
+    import_workouts_csv(user, CSV)
+    content = client.get(reverse("tokens")).content.decode()
+    assert "Create one below to read your data over the API." in content
+    assert "Import a CSV first" not in content
 
 
 @pytest.mark.django_db
@@ -1050,8 +1167,9 @@ def test_token_list_shows_the_expiry(client):
     client.post(reverse("tokens"), {"name": "reader", "expires_at": "2030-01-01T00:00"})
 
     response = client.get(reverse("tokens"))
+    content = response.content.decode()
 
-    assert b"expires 2030-01-01 00:00" in response.content
+    assert '<td data-label="Expiry" class="muted">2030-01-01 00:00</td>' in content
 
 
 @pytest.mark.django_db

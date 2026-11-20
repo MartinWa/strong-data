@@ -1,13 +1,13 @@
 {% extends "base.html" %}
 {% load assets %}
-{% block title %}Muscle mapping — strong-data{% endblock %}
+{% block title %}Muscles — strong-data{% endblock %}
 {% block scripts %}
 <script src="{% asset 'workouts/muscles.js' %}" defer></script>
 <script src="{% asset 'workouts/delete.js' %}" defer></script>
 {% endblock %}
 {% block content %}
 <div class="page-head">
-  <h1>Muscle mapping</h1>
+  <h1>Muscles</h1>
   {% if count %}
   <p class="lede">One row per imported exercise name, {{ page.paginator.per_page }} per page. Saving applies the group to all of that exercise's sets and only touches the rows shown; corrections survive re-imports. Pick a group, or choose Custom… to name a new one.</p>
   {% else %}

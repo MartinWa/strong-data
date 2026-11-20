@@ -132,10 +132,10 @@ corrections and API tokens are kept, so a later import reuses your corrections
 instead of re-guessing them. There is nothing to export from the app: the Strong
 CSV you imported is the export, and sending it again reproduces the data.
 
-## Muscle mapping
+## Muscles
 
 New exercise names get a heuristic muscle-group guess at import time. Correct any
-guess on the *Muscle mapping* screen (`/muscles/`); the correction applies to
+guess on the *Muscles* screen (`/muscles/`); the correction applies to
 that exercise name for your account and is preserved by later imports. The page
 lists the exercise names you have imported, 100 per page, and saves the rows you
 edited on that page with a single *Save all*, which appears as soon as anything
