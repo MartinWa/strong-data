@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
+from django.db.models import Count, Sum
 from django.utils import timezone
 
 from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
@@ -362,10 +363,10 @@ def validate_progress_options(group_by):
         )
 
 
-def progress_data(user, name, start, end, group_by):
+def progress_data(user, name, start, end, group_by, program):
     validate_progress_options(group_by)
     grouped = defaultdict(list)
-    for item in owned_sets(user, start=start, end=end, exercise=name):
+    for item in owned_sets(user, start=start, end=end, exercise=name, program=program):
         key = item.session_id if group_by == "session" else item.session.session_date
         grouped[key].append(item)
 
@@ -391,9 +392,9 @@ def progress_data(user, name, start, end, group_by):
     return {"count": len(items), "items": items}
 
 
-def exercise_record_data(user, name, start, end):
+def exercise_record_data(user, name, start, end, program):
     by_reps = defaultdict(list)
-    for item in owned_sets(user, start=start, end=end, exercise=name):
+    for item in owned_sets(user, start=start, end=end, exercise=name, program=program):
         by_reps[item.reps].append(item)
 
     items = []
@@ -522,44 +523,39 @@ def _cutoff(year, as_of):
     return date(year, as_of.month, day)
 
 
-def _pace_curve(user, years, focus_year, cutoff, program):
-    included = {y for y in years if y <= focus_year} | {focus_year}
-    daily = defaultdict(lambda: {"sessions": 0, "volume": Decimal(0)})
-    for session in owned_sessions(
-        user, start=date(min(included), 1, 1), end=cutoff, program=program
-    ):
-        entry = daily[session.session_date]
-        entry["sessions"] += 1
-        entry["volume"] += session.total_volume_kg
+def _session_rows(user, *, start=None, end=None, program=None):
+    """One projected session read; every pace figure is derived from it."""
+    return owned_sessions(user, start=start, end=end, program=program).values(
+        "session_date", "set_count", "total_volume_kg", "duration_min"
+    )
 
-    rows = []
-    for y in sorted(included):
-        start = date(y, 1, 1)
-        end = cutoff if y == focus_year else date(y, 12, 31)
-        if end < start:
-            continue
-        cumulative_sessions = 0
-        cumulative_volume = Decimal(0)
-        current = start
-        while True:
-            entry = daily.get(current)
-            if entry:
-                cumulative_sessions += entry["sessions"]
-                cumulative_volume += entry["volume"]
-            rows.append(
-                {
-                    "year": y,
-                    "date": current.isoformat(),
-                    "day_of_year": (current - start).days + 1,
-                    "sessions": entry["sessions"] if entry else 0,
-                    "cumulative_sessions": cumulative_sessions,
-                    "cumulative_volume_kg": round2(cumulative_volume),
-                }
-            )
-            if current >= end:
-                break
-            current += timedelta(days=1)
-    return rows
+
+def _roll_up(rows):
+    """Per-year and per-day totals from one projected session read."""
+    years = defaultdict(lambda: {"sessions": 0, "sets": 0, "volume": Decimal(0), "duration": 0})
+    days = defaultdict(lambda: {"sessions": 0, "volume": Decimal(0)})
+    for row in rows:
+        year = row["session_date"].year
+        entry = years[year]
+        entry["sessions"] += 1
+        entry["sets"] += row["set_count"]
+        entry["volume"] += row["total_volume_kg"]
+        entry["duration"] += row["duration_min"] or 0
+        day = days[row["session_date"]]
+        day["sessions"] += 1
+        day["volume"] += row["total_volume_kg"]
+    return years, days
+
+
+def _year_totals(entry):
+    if entry is None:
+        return {"sessions": 0, "sets": 0, "volume_kg": 0.0, "hours": 0.0}
+    return {
+        "sessions": entry["sessions"],
+        "sets": entry["sets"],
+        "volume_kg": float(entry["volume"]),
+        "hours": entry["duration"] / 60,
+    }
 
 
 def pace_data(user, year, as_of, program):
@@ -567,21 +563,20 @@ def pace_data(user, year, as_of, program):
     year_end = date(year, 12, 31)
     previous = year - 1
     cutoff = _cutoff(year, as_of)
+    last_cutoff = _cutoff(previous, as_of)
 
     with transaction.atomic():
-        ytd = _totals(owned_sessions(user, start=year_start, end=cutoff, program=program))
-        last_ytd = _totals(
-            owned_sessions(
-                user, start=date(previous, 1, 1), end=_cutoff(previous, as_of), program=program
-            )
-        )
-        last_full = _totals(
-            owned_sessions(
-                user, start=date(previous, 1, 1), end=date(previous, 12, 31), program=program
-            )
-        )
-        yearly = yearly_data(user, program)["items"]
-        curve = _pace_curve(user, [row["year"] for row in yearly], year, cutoff, program)
+        rows = list(_session_rows(user, end=cutoff, program=program))
+
+    years, _ = _roll_up(rows)
+    ytd = _year_totals(years.get(year))
+    last_year_rows = [
+        row
+        for row in rows
+        if row["session_date"].year == previous and row["session_date"] <= last_cutoff
+    ]
+    last_ytd = _year_totals(_roll_up(last_year_rows)[0].get(previous))
+    last_full = _year_totals(years.get(previous))
 
     days_in_year = (year_end - year_start).days + 1
     elapsed = max(1, min((cutoff - year_start).days + 1, days_in_year))
@@ -596,16 +591,15 @@ def pace_data(user, year, as_of, program):
     cumulative_sessions = 0
     cumulative_volume = 0.0
     pace = []
-    for row in yearly:
-        if row["year"] > year:
-            continue
-        cumulative_sessions += row["sessions"]
-        cumulative_volume += row["volume_kg"]
+    for row_year in sorted(years):
+        entry = _year_totals(years[row_year])
+        cumulative_sessions += entry["sessions"]
+        cumulative_volume += entry["volume_kg"]
         pace.append(
             {
-                "year": row["year"],
-                "sessions": row["sessions"],
-                "volume_kg": row["volume_kg"],
+                "year": row_year,
+                "sessions": entry["sessions"],
+                "volume_kg": round2(entry["volume_kg"]),
                 "cumulative_sessions": cumulative_sessions,
                 "cumulative_volume_kg": round2(cumulative_volume),
             }
@@ -618,8 +612,48 @@ def pace_data(user, year, as_of, program):
         "projected": projected,
         "needed_per_week": needed,
         "pace": pace,
-        "curve": curve,
     }
+
+
+def curve_data(user, year, years, as_of, program):
+    cutoff = _cutoff(year, as_of)
+    start = date(min(years), 1, 1)
+    with transaction.atomic():
+        rows = list(
+            owned_sessions(user, start=start, end=cutoff, program=program)
+            .values("session_date")
+            .annotate(sessions=Count("id"), volume=Sum("total_volume_kg"))
+            .order_by()
+        )
+    daily = {row["session_date"]: row for row in rows}
+
+    items = []
+    for included in years:
+        first = date(included, 1, 1)
+        final = cutoff if included == year else date(included, 12, 31)
+        cumulative_sessions = 0
+        cumulative_volume = Decimal(0)
+        current = first
+        while True:
+            entry = daily.get(current)
+            if entry:
+                cumulative_sessions += entry["sessions"]
+                cumulative_volume += entry["volume"] or Decimal(0)
+            items.append(
+                {
+                    "year": included,
+                    "date": current.isoformat(),
+                    "day_of_year": (current - first).days + 1,
+                    "sessions": entry["sessions"] if entry else 0,
+                    "cumulative_sessions": cumulative_sessions,
+                    "cumulative_volume_kg": round2(cumulative_volume),
+                }
+            )
+            if current >= final:
+                break
+            current += timedelta(days=1)
+
+    return {"year": year, "years": years, "count": len(items), "items": items}
 
 
 def set_record(item, mapping):

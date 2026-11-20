@@ -352,10 +352,13 @@ def test_progress_can_group_by_session(auth):
     assert items[0]["session_id"] != items[1]["session_id"]
 
 
-def test_pace_curve_stops_at_the_cutoff(auth):
-    curve = auth.get(BASE + "/yearly/pace?year=2026&as_of=2026-03-01").json()["curve"]
-    assert len(curve) == 60
-    assert curve[0] == {
+def test_curve_stops_at_the_cutoff(auth):
+    response = auth.get(BASE + "/yearly/curve?year=2026&as_of=2026-03-01&years=2026").json()
+    assert response["year"] == 2026
+    assert response["years"] == [2026]
+    assert response["count"] == 60
+    items = response["items"]
+    assert items[0] == {
         "year": 2026,
         "date": "2026-01-01",
         "day_of_year": 1,
@@ -363,15 +366,15 @@ def test_pace_curve_stops_at_the_cutoff(auth):
         "cumulative_sessions": 0,
         "cumulative_volume_kg": 0.0,
     }
-    assert curve[-1]["date"] == "2026-03-01"
-    assert curve[-1]["day_of_year"] == 60
-    assert curve[-1]["cumulative_sessions"] == 3
-    assert curve[-1]["cumulative_volume_kg"] == 1992.5
-    assert [row["day_of_year"] for row in curve if row["sessions"]] == [5, 7, 33]
+    assert items[-1]["date"] == "2026-03-01"
+    assert items[-1]["day_of_year"] == 60
+    assert items[-1]["cumulative_sessions"] == 3
+    assert items[-1]["cumulative_volume_kg"] == 1992.5
+    assert [row["day_of_year"] for row in items if row["sessions"]] == [5, 7, 33]
 
 
 @pytest.mark.django_db
-def test_pace_curve_covers_full_earlier_years(client):
+def test_curve_covers_whole_earlier_years(client):
     csv_text = (
         "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
         "2025-06-01 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
@@ -380,14 +383,23 @@ def test_pace_curve_covers_full_earlier_years(client):
     make_user("carol", csv_text, "synthetic-token-for-carol")
     client.defaults["HTTP_AUTHORIZATION"] = "Bearer synthetic-token-for-carol"
 
-    curve = client.get(BASE + "/yearly/pace?year=2026&as_of=2026-01-10").json()["curve"]
-    assert len(curve) == 365 + 10
-    assert [row["year"] for row in curve[:365]] == [2025] * 365
-    assert curve[364]["day_of_year"] == 365
-    assert curve[364]["cumulative_sessions"] == 1
-    assert curve[-1]["year"] == 2026
-    assert curve[-1]["day_of_year"] == 10
-    assert curve[-1]["cumulative_sessions"] == 1
+    body = client.get(BASE + "/yearly/curve?year=2026&as_of=2026-01-10&years=2025,2026").json()
+    items = body["items"]
+    assert body["years"] == [2025, 2026]
+    assert len(items) == 365 + 10
+    assert [row["year"] for row in items[:365]] == [2025] * 365
+    assert items[364]["day_of_year"] == 365
+    assert items[364]["cumulative_sessions"] == 1
+    assert items[-1]["year"] == 2026
+    assert items[-1]["day_of_year"] == 10
+    assert items[-1]["cumulative_sessions"] == 1
+
+
+def test_curve_defaults_to_four_years_ending_at_the_compared_year(auth):
+    body = auth.get(BASE + "/yearly/curve?year=2026&as_of=2026-03-01").json()
+    assert body["years"] == [2023, 2024, 2025, 2026]
+    assert body["count"] == 365 + 366 + 365 + 60
+    assert body["items"][-1]["date"] == "2026-03-01"
 
 
 def test_an_empty_program_behaves_like_no_filter(auth):
@@ -407,7 +419,7 @@ def test_an_empty_program_behaves_like_no_filter(auth):
 
 
 @pytest.mark.django_db
-def test_pace_curve_includes_the_selected_year_without_sessions(client):
+def test_curve_includes_a_selected_year_without_sessions(client):
     csv_text = (
         "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
         "2025-06-01 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
@@ -415,22 +427,60 @@ def test_pace_curve_includes_the_selected_year_without_sessions(client):
     make_user("dave", csv_text, "synthetic-token-for-dave")
     client.defaults["HTTP_AUTHORIZATION"] = "Bearer synthetic-token-for-dave"
 
-    pace = client.get(BASE + "/yearly/pace?year=2026&as_of=2026-03-01").json()
-    assert pace["ytd"]["sessions"] == 0
-    assert [row["year"] for row in pace["pace"]] == [2025]
-    assert {row["year"] for row in pace["curve"]} == {2025, 2026}
-    assert len([row for row in pace["curve"] if row["year"] == 2026]) == 60
-    assert all(row["cumulative_sessions"] == 0 for row in pace["curve"] if row["year"] == 2026)
+    body = client.get(BASE + "/yearly/curve?year=2026&as_of=2026-03-01&years=2025,2026").json()
+    assert {row["year"] for row in body["items"]} == {2025, 2026}
+    assert len([row for row in body["items"] if row["year"] == 2026]) == 60
+    assert all(row["cumulative_sessions"] == 0 for row in body["items"] if row["year"] == 2026)
 
 
 @pytest.mark.django_db
-def test_pace_curve_stops_at_the_final_supported_date(auth):
-    response = auth.get(BASE + "/yearly/pace?year=9999&as_of=9999-12-31")
+def test_curve_stops_at_the_final_supported_date(auth):
+    response = auth.get(BASE + "/yearly/curve?year=9999&as_of=9999-12-31&years=9999")
 
     assert response.status_code == 200
-    curve = response.json()["curve"]
-    final_year = [row for row in curve if row["year"] == 9999]
-    assert len(final_year) == 365
-    assert final_year[-1]["date"] == "9999-12-31"
-    assert final_year[-1]["day_of_year"] == 365
-    assert not any(row["sessions"] for row in final_year)
+    items = response.json()["items"]
+    assert len(items) == 365
+    assert items[-1]["date"] == "9999-12-31"
+    assert items[-1]["day_of_year"] == 365
+    assert not any(row["sessions"] for row in items)
+
+
+@pytest.mark.django_db
+def test_curve_rejects_unusable_year_selections(auth):
+    for query in [
+        "years=2026,abc",
+        "years=2024,,2025",
+        "years=1",
+        "years=2027",
+        "years=2016,2017,2018,2019,2020,2021,2022,2023,2024,2025,2026",
+    ]:
+        response = auth.get(BASE + f"/yearly/curve?year=2026&{query}")
+        assert response.status_code == 422, (query, response.content[:200])
+        assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_curve_orders_and_deduplicates_requested_years(auth):
+    body = auth.get(BASE + "/yearly/curve?year=2026&as_of=2026-01-02&years=2025,2026,2025").json()
+    assert body["years"] == [2025, 2026]
+    assert body["items"][0]["year"] == 2025
+    assert body["items"][-1]["year"] == 2026
+
+
+def test_exercise_endpoints_accept_a_program_filter(auth):
+    name = "Bench%20Press%20(Barbell)"
+    push = auth.get(BASE + f"/exercises/{name}/progress?program=Push%20Day").json()
+    unfiltered = auth.get(BASE + f"/exercises/{name}/progress").json()
+    assert [row["volume_kg"] for row in push["items"]] == [
+        row["volume_kg"] for row in unfiltered["items"]
+    ]
+
+    other = auth.get(BASE + f"/exercises/{name}/progress?program=Pull%20Day").json()
+    assert other == {
+        "contract_version": "1.0",
+        "generated_at": other["generated_at"],
+        "count": 0,
+        "items": [],
+    }
+
+    assert auth.get(BASE + f"/exercises/{name}/records?program=Pull%20Day").json()["count"] == 0
+    assert auth.get(BASE + f"/exercises/{name}/records?program=Push%20Day").json()["count"] == 2

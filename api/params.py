@@ -102,6 +102,8 @@ class NoQuery(StrictQueryModel):
 
 MIN_YEAR = 2
 MAX_YEAR = 9999
+DEFAULT_CURVE_YEARS = 4
+MAX_CURVE_YEARS = 10
 
 
 def validate_year(year):
@@ -168,3 +170,37 @@ def build_page(request, items, count, limit, offset):
         "previous": continuation(max(0, offset - limit)) if offset > 0 else None,
         "has_more": has_more,
     }
+
+
+def parse_curve_years(value, focus_year):
+    if value is None:
+        return [
+            year
+            for year in range(focus_year - DEFAULT_CURVE_YEARS + 1, focus_year + 1)
+            if year >= MIN_YEAR
+        ]
+    parts = [part.strip() for part in value.split(",")]
+    if not parts or any(part == "" for part in parts):
+        raise ApiError(422, "validation_error", "years must be a comma-separated list of years")
+    years = []
+    for part in parts:
+        if not _INT_RE.fullmatch(part):
+            raise ApiError(422, "validation_error", "years must be a comma-separated list of years")
+        year = int(part)
+        validate_year(year)
+        if year > focus_year:
+            raise ApiError(
+                422,
+                "validation_error",
+                f"years may not be later than the compared year ({focus_year})",
+            )
+        if year not in years:
+            years.append(year)
+    if len(years) > MAX_CURVE_YEARS:
+        raise ApiError(
+            422,
+            "validation_error",
+            f"years may list at most {MAX_CURVE_YEARS} years",
+            details=sorted(years),
+        )
+    return sorted(years)

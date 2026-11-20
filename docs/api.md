@@ -120,7 +120,8 @@ always send the parameter.
 
 `program` is available on `/summary`, `/sessions`, `/sets`, every `/series/*`
 endpoint, every `/breakdown/*` endpoint, `/yearly`, `/yearly/pace`,
-`/records/est-1rm` and `/records/bodyweight`. `start` and `end` are also accepted
+`/yearly/curve`, both `/exercises/{name}/*` endpoints, `/records/est-1rm` and
+`/records/bodyweight`. `start` and `end` are also accepted
 by the two record endpoints, so a record list can describe one period or one
 program instead of all history. Series `group_by` stays independent of the filter:
 filtering to one program and grouping by program returns that single group.
@@ -191,6 +192,8 @@ resolves the full name.
   sets. `sets` counts the group's sets, and `session_id` is the session when
   grouping by session and `null` otherwise, so two sessions on one day stay
   separate rather than being summed into that day.
+- Both accept `start`, `end` and `program`, so one exercise's history can be
+  reported for one routine only.
 - `records` returns one row per distinct rep count, sorted by `reps` ascending.
   The row is the best set for that rep count, tie-broken by highest weight, then
   highest `est_1rm_kg`, then most recent `set_time`; `set_count` is how many sets
@@ -211,7 +214,7 @@ resolves the full name.
 ## Yearly
 
 - `yearly` returns one row per year with data, sorted by year ascending.
-- Both yearly endpoints accept `program`, so a yearly history can describe one
+- Every yearly endpoint accepts `program`, so a yearly history can describe one
   program.
 - `yearly/pace` compares `year` (default: the year of `as_of`) against the same
   point in the previous year:
@@ -234,11 +237,26 @@ includes the cutoff; `days_in_year` is 365 or 366; `remaining_weeks =
 unrounded totals; all numbers in the response are rounded to two decimals.
 
 `pace` accumulates whole years, so its rows carry no position inside the year.
-`curve` is the within-year view: every earlier year covers Jan 1 to Dec 31 and
-zero-filled days are included, while the compared year stops at `as_of`. A day
-without a session repeats the previous cumulative value, so a chart drawn from
-`day_of_year` compares years directly; `date` is the real date in that year and is
-not aligned across years.
+It counts the compared year up to `as_of`, so its last row is comparable with
+`ytd`.
+
+`GET /yearly/curve` is the within-year view and is requested separately, because
+it is the only response whose size depends on how many years are asked for:
+
+| Parameter | Meaning |
+| --- | --- |
+| `year` | Compared year; its rows stop at `as_of` (default: the year of `as_of`) |
+| `years` | Comma-separated years to include. Default: `year` and the three preceding years. At most 10, each at least 2 and no later than `year` |
+| `as_of` | Cutoff for the compared year, as on `/yearly/pace` |
+| `program` | Routine filter |
+
+`items` holds `{year, date, day_of_year, sessions, cumulative_sessions,
+cumulative_volume_kg}` for every calendar day of every requested year. Earlier
+years cover Jan 1 to Dec 31 and are zero-filled, so a requested year without
+sessions still appears as a zero line; a day without a session repeats the
+previous cumulative value. A chart drawn from `day_of_year` therefore compares
+years directly, while `date` remains the real date in that year. Ten years is the
+largest selection, which bounds the response at 3660 rows.
 
 ## Raw endpoints
 

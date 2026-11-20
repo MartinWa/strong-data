@@ -187,7 +187,13 @@ class PaceOut(Envelope):
     projected: PaceProjection
     needed_per_week: PaceNeeded
     pace: list[PaceRow]
-    curve: list[PaceCurveRow]
+
+
+class CurveOut(Envelope):
+    year: int
+    years: list[int]
+    count: int
+    items: list[PaceCurveRow]
 
 
 class SetItem(Schema):

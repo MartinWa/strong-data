@@ -3,7 +3,7 @@ from typing import Literal
 from ninja import Router
 
 from ..contract import envelope
-from ..params import OptDateParam, StrictQuery, validate_date_range
+from ..params import OptDateParam, OptFilterParam, StrictQuery, validate_date_range
 from ..queries import exercise_record_data, progress_data
 from ..schemas import ExerciseRecordOut, ProgressOut
 
@@ -22,9 +22,13 @@ def exercise_progress(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     group_by: Literal["day", "session"] = StrictQuery("day"),
+    program: OptFilterParam = StrictQuery(None),
 ):
     validate_date_range(start, end)
-    return {**envelope(), **progress_data(request.auth, name, start, end, group_by)}
+    return {
+        **envelope(),
+        **progress_data(request.auth, name, start, end, group_by, program),
+    }
 
 
 @router.get(
@@ -38,6 +42,7 @@ def exercise_records(
     name: str,
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     validate_date_range(start, end)
-    return {**envelope(), **exercise_record_data(request.auth, name, start, end)}
+    return {**envelope(), **exercise_record_data(request.auth, name, start, end, program)}
