@@ -6,7 +6,12 @@ from pathlib import Path
 import pytest
 from django.core.exceptions import ImproperlyConfigured
 
-from strong_data.settings import DEVELOPMENT_SECRET_KEY, secret_key
+from strong_data.settings import (
+    DEFAULT_PENDING_SWEEP_SECONDS,
+    DEVELOPMENT_SECRET_KEY,
+    secret_key,
+    sweep_interval,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 PLACEHOLDER = "replace-with-a-long-random-value"
@@ -50,6 +55,25 @@ def test_development_ignores_the_placeholder(monkeypatch):
     monkeypatch.setenv("STRONG_SECRET_KEY", PLACEHOLDER)
 
     assert secret_key(debug=True) == DEVELOPMENT_SECRET_KEY
+
+
+def test_sweep_interval_defaults_to_fifteen_minutes():
+    assert sweep_interval("900") == 900
+
+
+@pytest.mark.parametrize("value", ["", "   "])
+def test_sweep_interval_falls_back_when_unset(value):
+    assert sweep_interval(value) == DEFAULT_PENDING_SWEEP_SECONDS
+
+
+def test_sweep_interval_accepts_zero_to_disable_the_sweep():
+    assert sweep_interval("0") == 0
+
+
+@pytest.mark.parametrize("value", ["soon", "15m", "-1"])
+def test_sweep_interval_rejects_anything_but_seconds(value):
+    with pytest.raises(ImproperlyConfigured):
+        sweep_interval(value)
 
 
 def test_settings_import_fails_without_a_secret_in_production():

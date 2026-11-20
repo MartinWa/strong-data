@@ -1,4 +1,5 @@
 import os
+import threading
 import time
 from io import StringIO
 
@@ -109,6 +110,53 @@ def test_purge_stale_tolerates_a_missing_directory(pending_root):
     assert pending.purge_stale() == 0
 
     assert not pending_root.exists()
+
+
+def test_start_sweeper_is_opt_in(pending_root):
+    assert pending.start_sweeper(0) is None
+    assert pending.start_sweeper(-1) is None
+    assert not pending_root.exists()
+
+
+def test_start_sweeper_purges_expired_files_on_a_timer(pending_root):
+    pending.save(IMPORT_ID, SAMPLE, parse_workouts(SAMPLE))
+    expired = time.time() - pending.PENDING_TTL_SECONDS - 60
+    for suffix in ("csv", "json"):
+        os.utime(pending_root / f"{IMPORT_ID}.{suffix}", (expired, expired))
+
+    stop = threading.Event()
+    thread = pending.start_sweeper(0.01, stop)
+
+    try:
+        assert thread is not None
+        assert thread.daemon is True
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline and list(pending_root.iterdir()):
+            time.sleep(0.02)
+
+        assert list(pending_root.iterdir()) == []
+    finally:
+        stop.set()
+        thread.join(5)
+
+    assert not thread.is_alive()
+
+
+def test_sweep_survives_a_failing_purge(monkeypatch, caplog):
+    calls = []
+
+    def explode(ttl_seconds=pending.PENDING_TTL_SECONDS):
+        calls.append(ttl_seconds)
+        raise PermissionError("synthetic sweep failure")
+
+    monkeypatch.setattr(pending, "purge_stale", explode)
+    stop = threading.Event()
+    stop.set()
+
+    pending._sweep_forever(60, stop)
+
+    assert calls == [pending.PENDING_TTL_SECONDS]
+    assert "Staged upload sweep failed" in caplog.text
 
 
 def test_purge_pending_command_removes_expired_files_and_reports_them(pending_root):

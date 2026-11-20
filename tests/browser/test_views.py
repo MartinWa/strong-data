@@ -424,21 +424,41 @@ def test_cancel_discards_the_pending_upload_without_importing(client, tmp_path):
 
 
 @pytest.mark.django_db
-def test_cancel_discards_the_pending_upload_even_when_it_is_stale(client, tmp_path):
+def test_cancel_from_an_earlier_tab_keeps_the_newer_upload(client, tmp_path):
     user = get_user_model().objects.create_user(username="alice", password="x")
     client.force_login(user)
     upload(client)
+    earlier = client.get(reverse("preview"))
+    earlier_import = {
+        "import_id": earlier.context["import_id"],
+        "fingerprint": earlier.context["fingerprint"],
+    }
+    upload(client, CSV.replace("Push Day #1", "Pull Day"))
+    newer = client.session["pending_import"]
 
-    response = client.post(
-        reverse("preview"),
-        {"import_id": "stale-id-stale-id", "fingerprint": "stale", "action": "cancel"},
-    )
+    response = client.post(reverse("preview"), {**earlier_import, "action": "cancel"})
 
     assert response.status_code == 302
     assert response.url == reverse("upload")
-    assert "pending_import" not in client.session
-    assert list((tmp_path / "pending").iterdir()) == []
+    assert client.session["pending_import"] == newer
+    assert sorted(path.name for path in (tmp_path / "pending").iterdir()) == [
+        f"{newer['id']}.csv",
+        f"{newer['id']}.json",
+    ]
     assert WorkoutSession.objects.filter(owner=user).count() == 0
+
+    response = client.post(
+        reverse("preview"),
+        {
+            "import_id": newer["id"],
+            "fingerprint": newer["fingerprint"],
+            "action": "confirm",
+        },
+    )
+
+    assert response.url == reverse("sessions")
+    names = WorkoutSession.objects.filter(owner=user).values_list("workout_name", flat=True)
+    assert list(names) == ["Pull Day"]
 
 
 @pytest.mark.django_db

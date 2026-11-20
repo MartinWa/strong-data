@@ -1,8 +1,10 @@
 import contextlib
 import json
+import logging
 import os
 import re
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -96,6 +98,32 @@ def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> int:
         except OSError:
             continue
     return removed
+
+
+def start_sweeper(
+    interval_seconds: int, stop: threading.Event | None = None
+) -> threading.Thread | None:
+    if interval_seconds <= 0:
+        return None
+    thread = threading.Thread(
+        target=_sweep_forever,
+        args=(interval_seconds, stop or threading.Event()),
+        name="pending-sweeper",
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def _sweep_forever(interval_seconds: int, stop: threading.Event) -> None:
+    logger = logging.getLogger(__name__)
+    while True:
+        try:
+            purge_stale()
+        except Exception:
+            logger.exception("Staged upload sweep failed")
+        if stop.wait(interval_seconds):
+            return
 
 
 def group_warnings(warnings: tuple[str, ...] | list[str]) -> list[dict]:

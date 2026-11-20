@@ -122,16 +122,16 @@ def preview(request):
     if summary is None:
         return _expired(request, import_id)
     if request.method == "POST":
-        if request.POST.get("action") == "cancel":
-            _discard_pending(request, import_id)
-            messages.info(request, "Preview discarded. Nothing was imported.")
-            return redirect("upload")
         posted_id = request.POST.get("import_id", "")
         posted_fingerprint = request.POST.get("fingerprint", "")
         if not hmac.compare_digest(
             posted_id.encode(), import_id.encode()
         ) or not hmac.compare_digest(posted_fingerprint.encode(), stored["fingerprint"].encode()):
             messages.error(request, "This preview is stale. Upload the CSV again.")
+            return redirect("upload")
+        if request.POST.get("action") == "cancel":
+            _discard_pending(request, import_id)
+            messages.info(request, "Preview discarded. Nothing was imported.")
             return redirect("upload")
         raw = pending.load_csv(import_id)
         if raw is None:

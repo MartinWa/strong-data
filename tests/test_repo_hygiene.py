@@ -68,6 +68,12 @@ def test_production_compose_hardens_the_container():
         assert hardening in text
 
 
+def test_production_entrypoint_starts_the_pending_sweeper():
+    text = (REPO_ROOT / "tools/serve.py").read_text(encoding="utf-8")
+
+    assert "pending.start_sweeper(settings.PENDING_SWEEP_SECONDS)" in text
+
+
 def test_development_compose_needs_no_env_file():
     text = (REPO_ROOT / "compose.development.yaml").read_text(encoding="utf-8")
 

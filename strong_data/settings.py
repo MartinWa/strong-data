@@ -115,3 +115,26 @@ UPDATE_CHECK_ENABLED = os.environ.get("STRONG_UPDATE_CHECK", "true").strip().low
     "true",
     "yes",
 }
+
+
+DEFAULT_PENDING_SWEEP_SECONDS = 900
+
+
+def sweep_interval(raw: str) -> int:
+    value = raw.strip()
+    if not value:
+        return DEFAULT_PENDING_SWEEP_SECONDS
+    try:
+        seconds = int(value)
+    except ValueError as exc:
+        raise ImproperlyConfigured(
+            "STRONG_PENDING_SWEEP_SECONDS must be a whole number of seconds, or 0 to disable."
+        ) from exc
+    if seconds < 0:
+        raise ImproperlyConfigured(
+            "STRONG_PENDING_SWEEP_SECONDS must be a whole number of seconds, or 0 to disable."
+        )
+    return seconds
+
+
+PENDING_SWEEP_SECONDS = sweep_interval(os.environ.get("STRONG_PENDING_SWEEP_SECONDS", ""))
