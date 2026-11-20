@@ -523,24 +523,25 @@ def _cutoff(year, as_of):
 
 
 def _pace_curve(user, years, focus_year, cutoff, program):
-    if not years:
-        return []
+    included = {y for y in years if y <= focus_year} | {focus_year}
     daily = defaultdict(lambda: {"sessions": 0, "volume": Decimal(0)})
-    for session in owned_sessions(user, start=date(min(years), 1, 1), end=cutoff, program=program):
+    for session in owned_sessions(
+        user, start=date(min(included), 1, 1), end=cutoff, program=program
+    ):
         entry = daily[session.session_date]
         entry["sessions"] += 1
         entry["volume"] += session.total_volume_kg
 
     rows = []
-    for y in sorted(years):
+    for y in sorted(included):
         start = date(y, 1, 1)
         end = cutoff if y == focus_year else date(y, 12, 31)
-        if y > focus_year or end < start:
+        if end < start:
             continue
         cumulative_sessions = 0
         cumulative_volume = Decimal(0)
         current = start
-        while current <= end:
+        while True:
             entry = daily.get(current)
             if entry:
                 cumulative_sessions += entry["sessions"]
@@ -555,6 +556,8 @@ def _pace_curve(user, years, focus_year, cutoff, program):
                     "cumulative_volume_kg": round2(cumulative_volume),
                 }
             )
+            if current >= end:
+                break
             current += timedelta(days=1)
     return rows
 

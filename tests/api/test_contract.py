@@ -389,15 +389,48 @@ def test_pace_curve_covers_full_earlier_years(client):
     assert curve[-1]["day_of_year"] == 10
     assert curve[-1]["cumulative_sessions"] == 1
 
+
 def test_an_empty_program_behaves_like_no_filter(auth):
     unfiltered = auth.get(BASE + "/summary").json()
     empty = auth.get(BASE + "/summary?program=").json()
     for field in ("sessions", "sets", "volume_kg", "hours"):
         assert empty[field] == unfiltered[field]
 
-    assert auth.get(BASE + "/yearly/pace?program=").json()["ytd"] == auth.get(
-        BASE + "/yearly/pace"
-    ).json()["ytd"]
-    assert auth.get(BASE + "/breakdown/muscle?program=").json()["items"] == auth.get(
-        BASE + "/breakdown/muscle"
-    ).json()["items"]
+    assert (
+        auth.get(BASE + "/yearly/pace?program=").json()["ytd"]
+        == auth.get(BASE + "/yearly/pace").json()["ytd"]
+    )
+    assert (
+        auth.get(BASE + "/breakdown/muscle?program=").json()["items"]
+        == auth.get(BASE + "/breakdown/muscle").json()["items"]
+    )
+
+
+@pytest.mark.django_db
+def test_pace_curve_includes_the_selected_year_without_sessions(client):
+    csv_text = (
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2025-06-01 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
+    )
+    make_user("dave", csv_text, "synthetic-token-for-dave")
+    client.defaults["HTTP_AUTHORIZATION"] = "Bearer synthetic-token-for-dave"
+
+    pace = client.get(BASE + "/yearly/pace?year=2026&as_of=2026-03-01").json()
+    assert pace["ytd"]["sessions"] == 0
+    assert [row["year"] for row in pace["pace"]] == [2025]
+    assert {row["year"] for row in pace["curve"]} == {2025, 2026}
+    assert len([row for row in pace["curve"] if row["year"] == 2026]) == 60
+    assert all(row["cumulative_sessions"] == 0 for row in pace["curve"] if row["year"] == 2026)
+
+
+@pytest.mark.django_db
+def test_pace_curve_stops_at_the_final_supported_date(auth):
+    response = auth.get(BASE + "/yearly/pace?year=9999&as_of=9999-12-31")
+
+    assert response.status_code == 200
+    curve = response.json()["curve"]
+    final_year = [row for row in curve if row["year"] == 9999]
+    assert len(final_year) == 365
+    assert final_year[-1]["date"] == "9999-12-31"
+    assert final_year[-1]["day_of_year"] == 365
+    assert not any(row["sessions"] for row in final_year)
