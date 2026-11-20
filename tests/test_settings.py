@@ -4,7 +4,6 @@ import sys
 from pathlib import Path
 
 import pytest
-from django.conf import settings
 from django.core.exceptions import ImproperlyConfigured
 
 from strong_data.settings import (
@@ -77,10 +76,35 @@ def test_environment_secret_wins_over_the_file(monkeypatch, tmp_path):
     assert secret_key(debug=False) == REAL_SECRET
 
 
+def secure_cookies(**overrides):
+    env = {
+        key: value
+        for key, value in os.environ.items()
+        if key not in {"STRONG_DEBUG", "STRONG_SECRET_KEY"}
+    }
+    env.update(overrides)
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import strong_data.settings as s;"
+            " print(s.SESSION_COOKIE_SECURE, s.CSRF_COOKIE_SECURE)",
+        ],
+        cwd=ROOT,
+        env=env,
+        capture_output=True,
+        check=True,
+        text=True,
+    )
+    return result.stdout.strip()
+
+
 def test_secure_cookies_are_on_in_production():
-    assert settings.DEBUG is False
-    assert settings.SESSION_COOKIE_SECURE is True
-    assert settings.CSRF_COOKIE_SECURE is True
+    assert secure_cookies(STRONG_SECRET_KEY=REAL_SECRET) == "True True"
+
+
+def test_secure_cookies_are_off_in_development():
+    assert secure_cookies(STRONG_DEBUG="true") == "False False"
 
 
 def test_time_zone_defaults_to_utc(monkeypatch):
