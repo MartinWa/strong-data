@@ -81,18 +81,21 @@ def discard(import_id: str) -> None:
             continue
 
 
-def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> None:
+def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> int:
     try:
         entries = list(pending_dir().iterdir())
     except OSError:
-        return
+        return 0
     cutoff = time.time() - ttl_seconds
+    removed = 0
     for path in entries:
         try:
             if path.stat().st_mtime < cutoff:
                 path.unlink()
+                removed += 1
         except OSError:
             continue
+    return removed
 
 
 def group_warnings(warnings: tuple[str, ...] | list[str]) -> list[dict]:
@@ -112,6 +115,18 @@ def group_warnings(warnings: tuple[str, ...] | list[str]) -> list[dict]:
         else:
             group["hidden_rows"] += 1
     return sorted(groups.values(), key=lambda group: (-group["count"], group["message"]))
+
+
+def count_warning_rows(warnings: tuple[str, ...] | list[str]) -> int:
+    lines: set[int] = set()
+    unattributed = 0
+    for warning in warnings:
+        match = ROW_WARNING_PATTERN.fullmatch(warning)
+        if match is None:
+            unattributed += 1
+        else:
+            lines.add(int(match.group(1)))
+    return len(lines) + unattributed
 
 
 def summarize(parsed: ParsedWorkouts) -> dict:
@@ -174,6 +189,7 @@ def summarize(parsed: ParsedWorkouts) -> dict:
         "sessions": sessions,
         "exercises": list(parsed.exercises),
         "warning_total": len(warnings),
+        "warning_rows": count_warning_rows(warnings),
         "warning_groups": group_warnings(warnings),
         "sample_groups": sample_groups,
         "sample_set_count": sample_set_count,

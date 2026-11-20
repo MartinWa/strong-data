@@ -112,6 +112,7 @@ def test_upload_preview_confirm_flow(client):
         {
             "import_id": response.context["import_id"],
             "fingerprint": response.context["fingerprint"],
+            "action": "confirm",
         },
     )
     assert response.status_code == 302
@@ -397,6 +398,47 @@ def test_sessions_badges_pluralize_and_trim_volume(client):
     assert ">1 sets<" not in content
     assert ">480 kg<" in content
     assert "480.00 kg" not in content
+
+
+@pytest.mark.django_db
+def test_cancel_discards_the_pending_upload_without_importing(client, tmp_path):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    upload(client)
+    stored = client.session["pending_import"]
+
+    response = client.post(
+        reverse("preview"),
+        {
+            "import_id": stored["id"],
+            "fingerprint": stored["fingerprint"],
+            "action": "cancel",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.url == reverse("upload")
+    assert "pending_import" not in client.session
+    assert list((tmp_path / "pending").iterdir()) == []
+    assert WorkoutSession.objects.filter(owner=user).count() == 0
+
+
+@pytest.mark.django_db
+def test_cancel_discards_the_pending_upload_even_when_it_is_stale(client, tmp_path):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    upload(client)
+
+    response = client.post(
+        reverse("preview"),
+        {"import_id": "stale-id-stale-id", "fingerprint": "stale", "action": "cancel"},
+    )
+
+    assert response.status_code == 302
+    assert response.url == reverse("upload")
+    assert "pending_import" not in client.session
+    assert list((tmp_path / "pending").iterdir()) == []
+    assert WorkoutSession.objects.filter(owner=user).count() == 0
 
 
 @pytest.mark.django_db

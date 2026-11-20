@@ -122,6 +122,10 @@ def preview(request):
     if summary is None:
         return _expired(request, import_id)
     if request.method == "POST":
+        if request.POST.get("action") == "cancel":
+            _discard_pending(request, import_id)
+            messages.info(request, "Preview discarded. Nothing was imported.")
+            return redirect("upload")
         posted_id = request.POST.get("import_id", "")
         posted_fingerprint = request.POST.get("fingerprint", "")
         if not hmac.compare_digest(

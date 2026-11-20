@@ -1,7 +1,9 @@
 import os
 import time
+from io import StringIO
 
 import pytest
+from django.core.management import call_command
 
 from parsing import parse_workouts
 from workouts import pending
@@ -95,7 +97,7 @@ def test_purge_stale_removes_only_expired_files(pending_root):
     for suffix in ("csv", "json"):
         os.utime(pending_root / f"{IMPORT_ID}.{suffix}", (expired, expired))
 
-    pending.purge_stale()
+    assert pending.purge_stale() == 2
 
     assert sorted(path.name for path in pending_root.iterdir()) == [
         f"{OTHER_ID}.csv",
@@ -104,8 +106,43 @@ def test_purge_stale_removes_only_expired_files(pending_root):
 
 
 def test_purge_stale_tolerates_a_missing_directory(pending_root):
-    pending.purge_stale()
+    assert pending.purge_stale() == 0
 
+    assert not pending_root.exists()
+
+
+def test_purge_pending_command_removes_expired_files_and_reports_them(pending_root):
+    pending.save(IMPORT_ID, SAMPLE, parse_workouts(SAMPLE))
+    pending.save(OTHER_ID, SAMPLE, parse_workouts(SAMPLE))
+    expired = time.time() - pending.PENDING_TTL_SECONDS - 60
+    for suffix in ("csv", "json"):
+        os.utime(pending_root / f"{IMPORT_ID}.{suffix}", (expired, expired))
+
+    stdout = StringIO()
+    call_command("purge_pending", stdout=stdout)
+
+    assert stdout.getvalue().strip() == "Removed 2 stale pending files."
+    assert sorted(path.name for path in pending_root.iterdir()) == [
+        f"{OTHER_ID}.csv",
+        f"{OTHER_ID}.json",
+    ]
+
+
+def test_purge_pending_command_honours_a_shorter_ttl(pending_root):
+    pending.save(IMPORT_ID, SAMPLE, parse_workouts(SAMPLE))
+
+    stdout = StringIO()
+    call_command("purge_pending", "--ttl", "0", stdout=stdout)
+
+    assert stdout.getvalue().strip() == "Removed 2 stale pending files."
+    assert list(pending_root.iterdir()) == []
+
+
+def test_purge_pending_command_reports_an_empty_directory(pending_root):
+    stdout = StringIO()
+    call_command("purge_pending", stdout=stdout)
+
+    assert stdout.getvalue().strip() == "Removed 0 stale pending files."
     assert not pending_root.exists()
 
 
@@ -120,6 +157,7 @@ def test_summarize_caps_the_sample_and_reports_the_total():
     assert summary["sample_set_count"] == pending.SAMPLE_SET_LIMIT
     assert summary["total_sets"] == 30
     assert summary["warning_total"] == 0
+    assert summary["warning_rows"] == 0
     assert summary["warning_groups"] == []
 
 
@@ -203,12 +241,27 @@ def test_summarize_groups_warnings_by_cause_with_counts():
     summary = pending.summarize(parse_workouts(csv_text(*rows)))
 
     assert summary["warning_total"] == 2
+    assert summary["warning_rows"] == 2
     assert [group["message"] for group in summary["warning_groups"]] == [
         "invalid RPE; stored as null"
     ]
     assert summary["warning_groups"][0]["count"] == 2
     assert summary["warning_groups"][0]["rows"] == [4, 6]
     assert summary["warning_groups"][0]["hidden_rows"] == 0
+
+
+def test_summarize_counts_affected_rows_separately_from_warning_messages():
+    rows = ["2026-01-05 09:00:00,Push Day,54m,Bench Press,1,abc,5,0,0,99"]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert summary["warning_total"] == 2
+    assert summary["warning_rows"] == 1
+    assert [group["message"] for group in summary["warning_groups"]] == [
+        "invalid RPE; stored as null",
+        "invalid weight; stored as null",
+    ]
+    assert [group["count"] for group in summary["warning_groups"]] == [1, 1]
 
 
 def test_summarize_counts_every_warning_but_caps_the_listed_lines():
@@ -221,6 +274,7 @@ def test_summarize_counts_every_warning_but_caps_the_listed_lines():
     group = summary["warning_groups"][0]
 
     assert summary["warning_total"] == 30
+    assert summary["warning_rows"] == 30
     assert group["count"] == 30
     assert len(group["rows"]) == pending.WARNING_ROW_LIMIT
     assert group["rows"][0] == 2

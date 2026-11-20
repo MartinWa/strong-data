@@ -23,6 +23,10 @@ document.querySelectorAll("[data-upload-form]").forEach(function (form) {
     input.setAttribute("aria-describedby", describedBy);
   }
 
+  window.addEventListener("pageshow", function () {
+    delete form.dataset.submitting;
+  });
+
   input.addEventListener("change", function () {
     if (form.dataset.submitting || !input.files.length) return;
     if (maxBytes && input.files[0].size > maxBytes) {

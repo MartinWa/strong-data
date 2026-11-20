@@ -46,7 +46,9 @@ available at the point of use.
    behind *Show all* so the confirm bar stays in reach. The sticky
    bar at the bottom states what confirming replaces (`Confirming replaces 14
    sessions and 99 sets currently stored.`) or, on an empty account, that this is
-   the first import.
+   the first import. *Cancel* next to it throws the preview away: the staged file
+   is deleted straight away instead of waiting for the scheduled sweep, and nothing
+   is imported. Uploading again replaces an earlier preview the same way.
 3. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 sessions
    per page. Each row expands to show its sets.
 
@@ -89,8 +91,10 @@ preview and do not stop the import.
 | Duration that cannot be parsed | Stored as null |
 
 Skipped rows are never silently dropped: each one is counted in the preview's
-warning list. Warnings are grouped by cause with a count, and each group expands to
-the first 20 CSV line numbers plus how many further lines share that cause.
+warning list. The preview reports how many warnings were raised and how many rows
+they affect, since one row can raise more than one warning. Warnings are grouped by
+cause with a count, and each group expands to the first 20 CSV line numbers plus how
+many further lines share that cause.
 
 A `Weight` of `0` is treated as bodyweight, exactly like an empty `Weight`: the
 set is stored with no weight, contributes no volume and appears in bodyweight

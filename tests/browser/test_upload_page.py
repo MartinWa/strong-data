@@ -168,6 +168,13 @@ def test_preview_keeps_the_confirm_action_in_a_sticky_bar(client):
     assert "data-submit-once" in content
     assert 'src="/static/workouts/submit-once.js"' in content
 
+    form = content[content.index('<form method="post" class="actions">') :]
+    form = form[: form.index("</form>")]
+    assert 'name="action" value="confirm"' in form
+    assert 'name="action" value="cancel"' in form
+    assert "{% csrf_token %}" not in form
+    assert "csrfmiddlewaretoken" in form
+
 
 @pytest.mark.django_db
 def test_preview_groups_warnings_by_cause_with_counts(client):
@@ -176,13 +183,29 @@ def test_preview_groups_warnings_by_cause_with_counts(client):
     upload(client, WARNINGS_CSV)
     content = client.get(reverse("preview")).content.decode()
 
-    assert "63 rows" in content
+    assert "63 rows affected" in content
     assert "60 rows" in content
     assert "3 rows" in content
     assert content.count("invalid RPE; stored as null") == 1
     assert content.count("invalid weight; stored as null") == 1
     assert "and 40 more" in content
     assert "badge-danger" not in content
+
+
+@pytest.mark.django_db
+def test_preview_labels_the_warning_count_as_affected_rows(client):
+    signed_in(client)
+
+    upload(
+        client,
+        HEADER + "2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,abc,5,0,0,99\n",
+    )
+    content = client.get(reverse("preview")).content.decode()
+
+    assert "1 row affected" in content
+    assert "2 rows affected" not in content
+    assert content.count("invalid weight; stored as null") == 1
+    assert content.count("invalid RPE; stored as null") == 1
 
 
 @pytest.mark.django_db

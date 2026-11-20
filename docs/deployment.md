@@ -101,6 +101,24 @@ docker compose exec web python manage.py createsuperuser
 Users, muscle-group corrections and bearer tokens are all managed in the web UI
 and remain scoped to their owner. See `docs/usage.md` and `docs/api.md`.
 
+## Housekeeping
+
+A CSV is staged on disk until you confirm or cancel it, and each request that
+reaches the upload, preview or sessions page sweeps staged files older than one
+hour. An instance nobody visits keeps its leftovers, so run the sweep on a timer.
+Pending files live inside the container's `/tmp` tmpfs, which is only visible to
+that container: schedule the command with `exec` against the running service, not
+with `run`, which would start a fresh container with its own empty `/tmp`.
+
+```sh
+*/15 * * * * cd /srv/strong-data && docker compose exec -T web python manage.py purge_pending
+```
+
+A systemd timer works the same way. The command prints how many files it removed
+and accepts `--ttl SECONDS` to override the one-hour default. If you mount a
+dedicated volume at `STRONG_PENDING_DIR` instead of using the tmpfs, the sweep can
+run from any container.
+
 ## Verify and upgrade
 
 ```sh

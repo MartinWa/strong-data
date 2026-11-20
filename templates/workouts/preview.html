@@ -33,7 +33,7 @@
 <div class="card">
   <div class="card-head">
     <h2>Warnings</h2>
-    <span class="badge badge-warning">{{ summary.warning_total }} row{{ summary.warning_total|pluralize }}</span>
+    <span class="badge badge-warning">{{ summary.warning_rows }} row{{ summary.warning_rows|pluralize }} affected</span>
   </div>
   <p class="muted small">These rows were adjusted or skipped. The rest of the file still imports.</p>
   <ul class="warning-groups">
@@ -151,8 +151,8 @@
     {% csrf_token %}
     <input type="hidden" name="import_id" value="{{ import_id }}">
     <input type="hidden" name="fingerprint" value="{{ fingerprint }}">
-    <button class="btn btn-primary" type="submit" data-submit-once>Confirm import</button>
-    <a class="btn btn-ghost" href="{% url 'upload' %}">Cancel</a>
+    <button class="btn btn-primary" type="submit" name="action" value="confirm" data-submit-once>Confirm import</button>
+    <button class="btn btn-ghost" type="submit" name="action" value="cancel">Cancel</button>
   </form>
 </div>
 {% endblock %}
