@@ -954,9 +954,16 @@ input[type="file"]::file-selector-button:hover {
 
 .danger-confirm {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.6rem;
   margin: 0;
+}
+
+.danger-confirm .btn {
+  white-space: normal;
+  text-align: center;
 }
 
 .auth {
