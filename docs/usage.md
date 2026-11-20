@@ -27,6 +27,8 @@ upload page repeats these steps where you need them.
 4. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 per page.
    Open a row to see its sets.
 
+![The preview page: warnings grouped by cause, the sessions in the file and the replace notice](images/import-preview.png)
+
 ### Confirming replaces your previous data
 
 An import **replaces everything you previously imported**: sessions, sets and
@@ -89,9 +91,13 @@ export, and sending it again reproduces the data.
 
 Each new exercise name gets a guessed muscle group at import. Correct guesses on
 `/muscles/`: a correction applies to that exercise name for your account and is
-preserved by later imports. The page lists 100 names at a time; edit the rows you
-want and choose *Save all*, which appears once anything differs from what is
-stored and saves the rows on that page. *Cancel* reverts the page.
+preserved by later imports.
+
+![The muscles page: one row per exercise with the guessed or corrected muscle group](images/muscles.png)
+
+The page lists 100 names at a time; edit the rows you want and choose *Save all*,
+which appears once anything differs from what is stored and saves the rows on that
+page. *Cancel* reverts the page.
 
 Each row offers the guessed groups plus every group you already use, so a group
 you invented earlier is one click away. *Custom…* accepts any name (for example

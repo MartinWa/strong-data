@@ -1,18 +1,37 @@
-# strong-data
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/images/wordmark-on-dark.png">
+    <img src="docs/images/wordmark-on-light.png" alt="strong-data" width="260">
+  </picture>
+</p>
 
-Self-hosted import of your Strong workout CSV into a private SQLite database,
-with a server-rendered web UI and a read-only JSON API.
+Self-hosted import of your Strong workout CSV into a private SQLite database, with
+a server-rendered web UI and a read-only JSON API.
 
 Strong has no API and no way to get your training history out except its own CSV
 export. This app imports that export, keeps it in one SQLite file you own, and
-gives you sessions, per-exercise progress, personal records and muscle-group
-corrections — in the browser and over HTTP.
+turns it into something you can read: sessions, per-exercise progress, personal
+records, muscle-group corrections and a token-authenticated API.
 
 - One container, one database file: no external services, no sidecar, no
   telemetry, nothing loaded from a CDN
 - Idempotent import: confirming an export replaces what is stored instead of
   duplicating it
 - Read-only, versioned, owner-scoped API with a generated OpenAPI reference
+
+## What it looks like
+
+**Sessions** are the home page: newest first, one row per workout, opened to its
+sets with weight, reps, RPE, volume and estimated 1RM, grouped per exercise. Text,
+program and date filters narrow the list.
+
+![The sessions page: a legs workout expanded into one table per exercise](docs/images/sessions.png)
+
+**Importing** is always two steps. The preview lists the sessions in the file, a
+sample of their sets, and every row that would be skipped or blanked together with
+the reason — so a bad export is caught before it replaces anything.
+
+![The import preview: five warnings grouped by cause above the sessions in the file](docs/images/import-preview.png)
 
 ## Quick start
 

@@ -8,6 +8,8 @@ for fields, types and per-operation parameters. This page covers what a schema
 cannot express: authentication, the response envelope, the validation guardrails
 and the definitions behind each derived number.
 
+![The API reference at /api/v1/docs: every endpoint grouped by tag, with parameters and response schemas](images/api-docs.png)
+
 ## Auth
 
 - `GET /api/v1/healthz` is the only anonymous endpoint.
