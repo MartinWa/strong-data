@@ -116,6 +116,7 @@ def test_openapi_requires_token(auth):
         "/api/v1/healthz",
         "/api/v1/summary",
         "/api/v1/series/volume",
+        "/api/v1/yearly/curve",
         "/api/v1/exercises/{name}/progress",
         "/api/v1/sessions/{id}",
     ]:

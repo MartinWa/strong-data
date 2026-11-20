@@ -523,28 +523,21 @@ def _cutoff(year, as_of):
     return date(year, as_of.month, day)
 
 
-def _session_rows(user, *, start=None, end=None, program=None):
-    """One projected session read; every pace figure is derived from it."""
-    return owned_sessions(user, start=start, end=end, program=program).values(
+def _session_rows(user, *, end=None, program=None):
+    return owned_sessions(user, end=end, program=program).values(
         "session_date", "set_count", "total_volume_kg", "duration_min"
     )
 
 
 def _roll_up(rows):
-    """Per-year and per-day totals from one projected session read."""
     years = defaultdict(lambda: {"sessions": 0, "sets": 0, "volume": Decimal(0), "duration": 0})
-    days = defaultdict(lambda: {"sessions": 0, "volume": Decimal(0)})
     for row in rows:
-        year = row["session_date"].year
-        entry = years[year]
+        entry = years[row["session_date"].year]
         entry["sessions"] += 1
         entry["sets"] += row["set_count"]
         entry["volume"] += row["total_volume_kg"]
         entry["duration"] += row["duration_min"] or 0
-        day = days[row["session_date"]]
-        day["sessions"] += 1
-        day["volume"] += row["total_volume_kg"]
-    return years, days
+    return years
 
 
 def _year_totals(entry):
@@ -568,14 +561,14 @@ def pace_data(user, year, as_of, program):
     with transaction.atomic():
         rows = list(_session_rows(user, end=cutoff, program=program))
 
-    years, _ = _roll_up(rows)
+    years = _roll_up(rows)
     ytd = _year_totals(years.get(year))
     last_year_rows = [
         row
         for row in rows
         if row["session_date"].year == previous and row["session_date"] <= last_cutoff
     ]
-    last_ytd = _year_totals(_roll_up(last_year_rows)[0].get(previous))
+    last_ytd = _year_totals(_roll_up(last_year_rows).get(previous))
     last_full = _year_totals(years.get(previous))
 
     days_in_year = (year_end - year_start).days + 1
