@@ -4,7 +4,7 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, Sum
+from django.db.models import Count, Q, Sum
 from django.utils import timezone
 
 from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
@@ -615,12 +615,22 @@ def pace_data(user, year, as_of, program):
     }
 
 
+def _year_bounds(included, year, cutoff):
+    bounds = Q()
+    for value in included:
+        bounds |= Q(
+            session_date__gte=date(value, 1, 1),
+            session_date__lte=cutoff if value == year else date(value, 12, 31),
+        )
+    return bounds
+
+
 def curve_data(user, year, years, as_of, program):
     cutoff = _cutoff(year, as_of)
-    start = date(min(years), 1, 1)
     with transaction.atomic():
         rows = list(
-            owned_sessions(user, start=start, end=cutoff, program=program)
+            owned_sessions(user, program=program)
+            .filter(_year_bounds(years, year, cutoff))
             .values("session_date")
             .annotate(sessions=Count("id"), volume=Sum("total_volume_kg"))
             .order_by()

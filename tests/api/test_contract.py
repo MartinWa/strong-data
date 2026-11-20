@@ -484,3 +484,10 @@ def test_exercise_endpoints_accept_a_program_filter(auth):
 
     assert auth.get(BASE + f"/exercises/{name}/records?program=Pull%20Day").json()["count"] == 0
     assert auth.get(BASE + f"/exercises/{name}/records?program=Push%20Day").json()["count"] == 2
+
+
+@pytest.mark.django_db
+def test_curve_rejects_a_year_with_too_many_digits(auth):
+    response = auth.get(BASE + "/yearly/curve?year=2026&years=" + "9" * 5000)
+    assert response.status_code == 422
+    assert response.json()["error"]["code"] == "validation_error"

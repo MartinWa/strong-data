@@ -184,8 +184,12 @@ def parse_curve_years(value, focus_year):
         raise ApiError(422, "validation_error", "years must be a comma-separated list of years")
     years = []
     for part in parts:
-        if not _INT_RE.fullmatch(part):
-            raise ApiError(422, "validation_error", "years must be a comma-separated list of years")
+        if not _INT_RE.fullmatch(part) or len(part.lstrip("+-")) > 4:
+            raise ApiError(
+                422,
+                "validation_error",
+                "years must be a comma-separated list of years",
+            )
         year = int(part)
         validate_year(year)
         if year > focus_year:

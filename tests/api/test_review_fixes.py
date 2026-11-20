@@ -365,3 +365,27 @@ def test_disallowed_host_returns_the_json_error_envelope(client):
     body = response.json()
     assert body["contract_version"] == "1.0"
     assert body["error"]["code"] == "bad_request"
+
+
+@pytest.mark.django_db
+def test_curve_reads_only_the_requested_years(client):
+    csv_text = (
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2010-03-01 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
+        "2026-01-05 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
+    )
+    user = make_token_user(client, "curveyears", "curveyears-secret")
+    import_workouts_csv(user, csv_text)
+
+    with CaptureQueriesContext(connection) as captured:
+        response = client.get(BASE + "/yearly/curve?year=2026&as_of=2026-02-01&years=2010,2026")
+
+    assert response.status_code == 200
+    sql = [query["sql"].lower() for query in captured.captured_queries]
+    reads = [query for query in sql if 'from "workouts_workoutsession"' in query]
+    assert len(reads) == 1
+    assert "2010-01-01" in reads[0]
+    assert "2010-12-31" in reads[0]
+    assert "2026-01-01" in reads[0]
+    assert "2026-02-01" in reads[0]
+    assert "select distinct" in reads[0] or "count(" in reads[0]
