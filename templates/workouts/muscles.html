@@ -1,0 +1,133 @@
+{% extends "base.html" %}
+{% load assets %}
+{% block title %}Muscle mapping — strong-data{% endblock %}
+{% block scripts %}
+<script src="{% asset 'workouts/muscles.js' %}" defer></script>
+<script src="{% asset 'workouts/delete.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Muscle mapping</h1>
+  {% if count %}
+  <p class="lede">One row per imported exercise name, {{ page.paginator.per_page }} per page. Saving applies the group to all of that exercise's sets and only touches the rows shown; corrections survive re-imports. Pick a group, or choose Custom… to name a new one.</p>
+  {% else %}
+  <p class="lede">Import a CSV first; the guessed muscle groups appear here and you correct them row by row.</p>
+  {% endif %}
+</div>
+
+{% if not count %}
+<div class="empty">
+  <p>No exercises imported yet.</p>
+  <a class="btn btn-primary" href="{% url 'upload' %}">Upload a CSV export</a>
+</div>
+{% else %}
+<noscript>
+  <style>
+    .muscle-swap .muscle-custom {
+      display: block;
+      margin-top: 0.45rem;
+      padding-right: 0.65rem;
+    }
+    .muscle-back { display: none; }
+    .btn.muscle-save { visibility: visible; }
+  </style>
+</noscript>
+<form method="post" data-muscle-form>
+  {% csrf_token %}
+  {{ formset.management_form }}
+  <input type="hidden" name="page" value="{{ page.number }}">
+  <div class="card">
+    <div class="card-head">
+      <h2>Exercises <span class="badge">{{ count }}</span></h2>
+      <div class="actions">
+        <button class="btn muscle-save" type="reset">Cancel</button>
+        <button class="btn btn-primary muscle-save" type="submit">Save all</button>
+      </div>
+    </div>
+    {% if formset.non_form_errors %}
+    <div class="field field-invalid">
+      {% for error in formset.non_form_errors %}<p class="error">{{ error }}</p>{% endfor %}
+    </div>
+    {% endif %}
+    <div class="table-wrap">
+      <table class="table">
+        <thead>
+          <tr>
+            <th scope="col">Exercise</th>
+            <th scope="col" class="muscle-cell">Muscle group</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for form in formset %}
+          <tr id="row-{{ form.instance.pk }}" data-muscle-row{% if form.custom_selected %} class="is-custom"{% endif %}>
+            <td>
+              {{ form.id }}
+              {{ form.instance.exercise_name }}
+            </td>
+            <td class="muscle-cell">
+              <div class="field{% if form.muscle_group.errors or form.muscle_group_custom.errors %} field-invalid{% endif %}">
+                <div class="muscle-swap">
+                  {{ form.muscle_group }}
+                  {{ form.muscle_group_custom }}
+                  <button class="muscle-back" type="button" data-muscle-back aria-label="Pick from the list" title="Pick from the list">
+                    <svg class="icon" width="14" height="14" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M6 6l12 12M18 6 6 18"/></svg>
+                  </button>
+                </div>
+                {% for error in form.muscle_group.errors %}<p class="error">{{ error }}</p>{% endfor %}
+                {% for error in form.muscle_group_custom.errors %}<p class="error">{{ error }}</p>{% endfor %}
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    <div class="actions">
+      <button class="btn muscle-save" type="reset">Cancel</button>
+      <button class="btn btn-primary muscle-save" type="submit">Save all</button>
+    </div>
+  </div>
+</form>
+
+{% if page.paginator.num_pages > 1 %}
+<nav class="pager" aria-label="Pagination">
+  {% if page.has_previous %}
+  <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}">Previous</a>
+  {% else %}
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Previous</a>
+  {% endif %}
+  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
+  {% if page.has_next %}
+  <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}">Next</a>
+  {% else %}
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Next</a>
+  {% endif %}
+</nav>
+{% endif %}
+
+{% if custom_groups %}
+<div class="card">
+  <div class="card-head">
+    <h2>Custom groups <span class="badge">{{ custom_groups|length }}</span></h2>
+  </div>
+  <p class="lede">Groups you named yourself. Deleting one reverts the exercises that use it to the guessed group; built-in groups are not listed.</p>
+  <ul class="groups">
+    {% for group in custom_groups %}
+    <li class="groups-item">
+      <span class="groups-name">{{ group.name }}</span>
+      <span class="muted small">{{ group.total }} exercise{{ group.total|pluralize }}</span>
+      <span class="groups-actions" data-delete-zone>
+        <a class="btn btn-sm" href="?delete={{ group.name|urlencode }}" data-delete-start>Delete</a>
+        <form class="danger-confirm" method="post" action="{% url 'delete_group' %}"{% if request.GET.delete != group.name %} hidden{% endif %} data-delete-form>
+          {% csrf_token %}
+          <input type="hidden" name="group" value="{{ group.name }}">
+          <button class="btn btn-sm btn-danger" type="submit">Really delete “{{ group.name }}”</button>
+        </form>
+      </span>
+    </li>
+    {% endfor %}
+  </ul>
+</div>
+{% endif %}
+{% endif %}
+{% endblock %}

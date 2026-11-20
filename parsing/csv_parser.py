@@ -70,19 +70,8 @@ MUSCLE_GUESS = (
         "Glutes",
     ),
     (("calf raise", "calf"), "Calves"),
-    (
-        (
-            "plank",
-            "crunch",
-            "sit up",
-            "leg raise",
-            "side bend",
-            "ab wheel",
-            "russian twist",
-            "hanging knee",
-        ),
-        "Core",
-    ),
+    (("crunch", "sit up", "sit-up", "leg raise"), "Abs"),
+    (("plank", "ab wheel", "hanging knee", "russian twist", "side bend"), "Core"),
 )
 
 
