@@ -26,8 +26,9 @@ docker compose up -d
 ```
 
 Then attach your proxy to the `strong-data` network, forward it to `web:8000`,
-create the first account and log in. [Deployment](docs/deployment.md) covers every
-variable, both proxy patterns, upgrades and backups.
+[create the first account](docs/deployment.md#accounts) and log in.
+[Deployment](docs/deployment.md) covers every variable, both proxy patterns,
+upgrades and backups.
 
 ## Documentation
 

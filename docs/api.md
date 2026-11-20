@@ -88,6 +88,24 @@ the keys the operation lists in the schema, optionally prefixed with `-` for
 descending order, and always appends `id` ascending as a unique tiebreaker. The
 default `limit` is 50.
 
+## Derived fields
+
+These are computed once at import time and stored, so the numbers below have a
+single definition:
+
+- `volume_kg` — `COALESCE(weight_kg, 0) * reps`. A bodyweight set (no weight, or
+  a `Weight` of `0`) therefore has zero volume and appears only in bodyweight
+  records.
+- `est_1rm_kg` — Epley, `weight_kg * (1 + reps / 30)`, null when the set has no
+  weight or no reps. Strong's own UI shows Brzycki instead; using Epley is
+  deliberate and no 12-rep cap is applied anywhere.
+- `program` — `workout_name` with a trailing ` #N` stripped. Sessions are keyed by
+  the raw `workout_name`; `program` is only a grouping and filter dimension.
+- `set_count` and `total_volume_kg` — aggregates over a session's sets.
+
+`rpe` is nullable (6.0–10.0 in 0.5 steps) and feeds none of these fields or any
+aggregate.
+
 ## Summary
 
 `GET /summary` returns `sessions` and `sets` (matching sessions and the sum of
@@ -158,9 +176,6 @@ resolves the full name.
   set, sorted by `reps` descending. The row is the set with the most reps,
   tie-broken by most recent `set_time`.
 
-`est_1rm_kg` is the Epley estimate, `weight_kg * (1 + reps / 30)`, deliberately
-not the Brzycki formula Strong's own UI shows; no 12-rep cap is applied anywhere.
-
 ## Yearly
 
 - `yearly` returns one row per year with data, sorted by year ascending.
@@ -189,5 +204,4 @@ unrounded totals; all numbers in the response are rounded to two decimals.
 With `weighted=true`, a session qualifies if it has at least one weighted set;
 with `weighted=false`, only sessions whose sets are all bodyweight qualify.
 `set_time` is the earliest set time in the session for session rows; session
-`set_count` and `total_volume_kg` are stored at import time. `rpe` is nullable in
-6.0–10.0 and never feeds any aggregate.
+`set_count` and `total_volume_kg` are stored at import time.

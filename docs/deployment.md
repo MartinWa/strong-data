@@ -98,12 +98,7 @@ docker compose logs -f web
 ```
 
 If the data directory is not writable, startup stops with an error that names the
-directory and the `chown` that fixes it. Signup is disabled, so create the first
-administrator once the stack is up:
-
-```sh
-docker compose exec web python manage.py createsuperuser
-```
+directory and the `chown` that fixes it. Create the first account next.
 
 On each start the container applies migrations and serves the app with waitress.
 Static files are collected into the image at build time and served locally by
@@ -118,6 +113,31 @@ curl -fsS https://workouts.example.com/api/v1/healthz
 
 Do not point the `data` directory at NFS or SMB: SQLite write-ahead logging is not
 safe on network filesystems.
+
+## Accounts
+
+Signup is disabled and there is no self-service password reset, so every account
+is created by an administrator. Create the first one once the stack is up:
+
+```sh
+docker compose exec web python manage.py createsuperuser
+```
+
+It prompts for a username, e-mail and password. For a scripted setup, pass the
+password in the environment instead:
+
+```sh
+docker compose exec -e DJANGO_SUPERUSER_PASSWORD='<password>' web \
+  python manage.py createsuperuser --noinput --username <name>
+```
+
+Sign in at `/accounts/login/`. Further accounts are created the same way, or from
+the Django admin at `/admin/` under **Authentication and Authorization → Users**,
+where a superuser adds a user, sets its password and decides whether it is staff.
+Only superusers can add users; staff accounts without those permissions cannot.
+
+Every account is separate: each one imports its own CSV, keeps its own
+muscle-group corrections and API tokens, and never sees another account's data.
 
 ## Connecting a reverse proxy
 
@@ -172,10 +192,16 @@ location / {
 }
 ```
 
-Caddy forwards `X-Forwarded-Proto` on its own, so a reverse proxy block is enough
-(`workouts.example.com { reverse_proxy web:8000 }`); nginx and Traefik need it set
-explicitly. Keep `.env` private: it is gitignored, excluded from the image build
-context, and must never be committed.
+Caddy forwards `X-Forwarded-Proto` on its own, so this is enough for it:
+
+```caddyfile
+workouts.example.com {
+    reverse_proxy web:8000
+}
+```
+
+nginx and Traefik need the header set explicitly. Keep `.env` private: it is
+gitignored, excluded from the image build context, and must never be committed.
 
 ## Housekeeping
 

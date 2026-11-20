@@ -4,9 +4,10 @@ Getting a Strong CSV export into strong-data, and reading it back.
 
 ## Accounts
 
-Accounts are created by an administrator; there is no public signup. Log in at
-`/accounts/login/` with the credentials you were given. Every page needs a
-session, and you only ever see your own imports, corrections and tokens.
+Accounts are created by an administrator; see [accounts](deployment.md#accounts)
+for how the first one is made. Log in at `/accounts/login/` with the credentials
+you were given. Every page needs a session, and you only ever see your own
+imports, corrections and tokens.
 
 ## Import an export
 
@@ -46,12 +47,16 @@ and skipped or blanked instead of failing the import.
 | Problem | Result |
 | --- | --- |
 | Missing required columns, empty or unreadable file, no importable rows | Rejected at upload |
-| Invalid date, missing workout or exercise name, invalid set order or reps | Row skipped, warning |
+| Invalid date, both the workout and exercise name missing, invalid set order or reps | Row skipped, warning |
 | Negative weight | Row skipped, warning |
 | Invalid weight, distance or seconds | Stored empty, warning |
 | Negative distance or seconds | Stored empty, warning |
 | RPE outside 6.0–10.0 or not in 0.5 steps | Stored empty, warning |
 | Duration that cannot be parsed | Stored empty |
+
+A row is skipped only when both names are missing. If just one is missing it is
+imported as `Workout` or `Unknown`, without a warning, so check the preview for
+those names.
 
 Warnings are grouped by cause with a count, and each group lists the first 20 CSV
 line numbers affected. A `Weight` of `0` is bodyweight, exactly like an empty
