@@ -124,20 +124,24 @@ docker compose exec web python manage.py createsuperuser
 ```
 
 It prompts for a username, e-mail and password. For a scripted setup, pass the
-password in the environment instead:
+password in the environment and give the e-mail explicitly: `--noinput` needs a
+value for every required field, and an empty one is allowed.
 
 ```sh
 docker compose exec -e DJANGO_SUPERUSER_PASSWORD='<password>' web \
-  python manage.py createsuperuser --noinput --username <name>
+  python manage.py createsuperuser --noinput --username <name> --email ''
 ```
 
-Sign in at `/accounts/login/`. Further accounts are created the same way, or from
-the Django admin at `/admin/` under **Authentication and Authorization → Users**,
-where a superuser adds a user, sets its password and decides whether it is staff.
-Only superusers can add users; staff accounts without those permissions cannot.
+Sign in at `/accounts/login/`. This account is an administrator: a superuser sees
+every account's sessions in `/admin/`. Use it to create the people who import
+their own workouts, under **Authentication and Authorization → Users** in
+`/admin/`, leaving **Staff status** and **Superuser status** unchecked — an
+ordinary account needs neither to log in and use the app. Only superusers can add
+users, so keep `createsuperuser` for administrators.
 
 Every account is separate: each one imports its own CSV, keeps its own
-muscle-group corrections and API tokens, and never sees another account's data.
+muscle-group corrections and API tokens, and never sees another account's data
+outside the admin.
 
 ## Connecting a reverse proxy
 
