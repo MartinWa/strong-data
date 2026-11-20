@@ -2,6 +2,7 @@
 
 import os
 from pathlib import Path
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from django.core.exceptions import ImproperlyConfigured
 
@@ -13,8 +14,19 @@ DEVELOPMENT_SECRET_KEY = "django-insecure-local-development-only"
 PLACEHOLDER_SECRET_KEYS = frozenset({DEVELOPMENT_SECRET_KEY, "replace-with-a-long-random-value"})
 
 
+def read_setting(name: str) -> str:
+    """Read a setting, accepting a file path through the conventional NAME_FILE form."""
+    value = os.environ.get(name, "").strip()
+    if value:
+        return value
+    path = os.environ.get(f"{name}_FILE", "").strip()
+    if path:
+        return Path(path).read_text(encoding="utf-8").strip()
+    return ""
+
+
 def secret_key(debug: bool) -> str:
-    value = os.environ.get("STRONG_SECRET_KEY", "").strip()
+    value = read_setting("STRONG_SECRET_KEY")
     if value and value not in PLACEHOLDER_SECRET_KEYS:
         return value
     if debug:
@@ -36,6 +48,8 @@ CSRF_TRUSTED_ORIGINS = [
     if origin.strip()
 ]
 SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+SESSION_COOKIE_SECURE = not DEBUG
+CSRF_COOKIE_SECURE = not DEBUG
 
 INSTALLED_APPS = [
     "django.contrib.admin",
@@ -99,7 +113,20 @@ AUTH_PASSWORD_VALIDATORS = [
 ]
 
 LANGUAGE_CODE = "en-us"
-TIME_ZONE = "UTC"
+
+
+def default_time_zone() -> str:
+    name = read_setting("STRONG_TIME_ZONE") or "UTC"
+    try:
+        ZoneInfo(name)
+    except (ZoneInfoNotFoundError, ValueError) as exc:
+        raise ImproperlyConfigured(
+            f"STRONG_TIME_ZONE must be an IANA zone name such as Europe/Stockholm, not {name!r}."
+        ) from exc
+    return name
+
+
+TIME_ZONE = default_time_zone()
 USE_I18N = True
 USE_TZ = True
 

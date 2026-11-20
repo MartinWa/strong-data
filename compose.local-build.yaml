@@ -1,0 +1,7 @@
+# Build from this working copy instead of deploying a published image.
+services:
+  web:
+    image: "${STRONG_IMAGE:-strong-data:local}"
+    build:
+      context: .
+      target: production

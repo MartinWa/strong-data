@@ -79,14 +79,13 @@ jobs:
         run: docker compose -f compose.development.yaml run --rm web pytest -q
       - name: Validate compose files
         run: |
+          docker compose config -q
+          docker compose -f compose.yaml -f compose.host-port.yaml config -q
+          PROXY_NETWORK=proxy docker compose -f compose.yaml -f compose.proxy-network.yaml config -q
+          docker compose -f compose.yaml -f compose.local-build.yaml config -q
           cp .env.example .env
           trap 'rm -f .env' EXIT
           docker compose config -q
-          rm -f .env
-          if docker compose config -q 2>/dev/null; then
-            echo "Production compose must require .env" >&2
-            exit 1
-          fi
           docker compose -f compose.development.yaml config -q
       - name: Stop development containers
         if: always()

@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from tools.check_no_private_data import candidate_files, content_violations, find_violations
@@ -53,19 +54,89 @@ def test_ignore_rules_cover_sqlite_sidecars():
             assert "*.sqlite3-*" in patterns
 
 
-def test_production_compose_requires_operator_configuration():
+def test_production_compose_ships_working_defaults():
     text = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
 
-    assert 'image: "${STRONG_IMAGE:?Set a tested local or released image tag or digest}"' in text
-    assert 'env_file: "${STRONG_ENV_FILE:-.env}"' in text
-    assert 'name: "${PROXY_NETWORK:?Set the existing private proxy network}"' in text
+    assert 'image: "${STRONG_IMAGE:-ghcr.io/martinwa/strong-data:latest}"' in text
+    assert 'user: "${PUID:-1000}:${PGID:-1000}"' in text
+    assert "- ./data:/app/data" in text
+    assert 'name: "${STRONG_NETWORK:-strong-data}"' in text
+    assert "env_file" not in text
+    assert "build:" not in text
+
+
+def test_production_compose_passes_application_variables_through():
+    text = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
+    environment = text[text.index("    environment:") : text.index("    volumes:")]
+
+    for name in (
+        "STRONG_SECRET_KEY",
+        "STRONG_ALLOWED_HOSTS",
+        "STRONG_TRUSTED_PROXY",
+        "STRONG_TIME_ZONE",
+        "STRONG_SECRET_KEY_FILE",
+        "STRONG_CSRF_TRUSTED_ORIGINS",
+        "STRONG_UPDATE_CHECK",
+        "STRONG_PENDING_SWEEP_SECONDS",
+    ):
+        assert f"      - {name}\n" in environment
+    assert "${" not in environment
+    assert "STRONG_DEBUG" not in text
+    assert "STRONG_PORT" not in text
 
 
 def test_production_compose_hardens_the_container():
     text = (REPO_ROOT / "compose.yaml").read_text(encoding="utf-8")
 
-    for hardening in ("external: true", "read_only: true", "cap_drop", "no-new-privileges:true"):
+    for hardening in ("read_only: true", "cap_drop", "no-new-privileges:true", "init: true"):
         assert hardening in text
+
+
+def test_optional_overrides_cover_the_documented_patterns():
+    host_port = (REPO_ROOT / "compose.host-port.yaml").read_text(encoding="utf-8")
+    proxy_network = (REPO_ROOT / "compose.proxy-network.yaml").read_text(encoding="utf-8")
+    local_build = (REPO_ROOT / "compose.local-build.yaml").read_text(encoding="utf-8")
+
+    assert '"127.0.0.1:${STRONG_HOST_PORT:-8000}:8000"' in host_port
+    assert "external: true" in proxy_network
+    assert 'name: "${PROXY_NETWORK:?Set the existing private proxy network}"' in proxy_network
+    assert "target: production" in local_build
+    assert "build:" in local_build
+
+
+def test_contributor_agreement_allows_commercial_relicensing():
+    text = (REPO_ROOT / "CLA.md").read_text(encoding="utf-8")
+
+    assert "You retain ownership of the copyright" in text
+    assert "sublicense and distribute" in text
+    assert "right to relicense" in text
+    assert "## 6. Corporate contributions" in text
+    assert "harmonyagreements.org" in text
+    assert "## 13. Signature records" in text
+    assert "the owner of the `MartinWa/strong-data` GitHub repository" in text
+    assert "the laws of Sweden" in text
+    assert re.search(r"\[[A-Z][A-Z _]*\]", text) is None
+
+
+def test_contributor_agreement_is_enforced_without_an_archived_action():
+    contributing = (REPO_ROOT / "CONTRIBUTING.md").read_text(encoding="utf-8")
+    workflows = [
+        path.read_text(encoding="utf-8") for path in (REPO_ROOT / ".github/workflows").glob("*.yml")
+    ]
+
+    assert "Contributor License Agreement" in contributing
+    assert "cla-assistant.io" in contributing
+    assert not any("contributor-assistant/github-action" in text for text in workflows)
+    assert not (REPO_ROOT / "signatures").exists()
+
+
+def test_example_environment_lists_no_dead_settings():
+    text = (REPO_ROOT / ".env.example").read_text(encoding="utf-8")
+
+    for dead in ("STRONG_ENV_FILE", "STRONG_DB_PATH", "STRONG_STATIC_ROOT"):
+        assert dead not in text
+    assert "STRONG_SECRET_KEY=" in text
+    assert "STRONG_ALLOWED_HOSTS=" in text
 
 
 def test_production_entrypoint_starts_the_pending_sweeper():
@@ -82,21 +153,24 @@ def test_development_compose_needs_no_env_file():
     assert "127.0.0.1:8000:8000" in text
 
 
-def test_restore_docs_create_container_before_copying_backup():
+def test_restore_docs_stop_copy_rechown_and_start():
     text = (REPO_ROOT / "docs/backup-and-recovery.md").read_text(encoding="utf-8")
+    restore = text[text.index("## Restore") :]
 
-    create = text.index("docker compose create web")
-    copy = text.index("docker compose cp ./backup.sqlite3")
-    assert create < copy
-    assert "cp .env.example .env" in text[:create]
-    assert "docker compose build web" in text[:create]
+    stop = restore.index("docker compose stop web")
+    copy = restore.index("sudo cp ./strong-data-")
+    chown = restore.index("sudo chown 1000:1000 data/strong.sqlite3")
+    start = restore.index("docker compose start web")
+    assert stop < copy < chown < start
+    assert "strong.sqlite3-wal" in restore
 
 
-def test_recovery_chown_commands_grant_only_ownership():
+def test_ownership_is_fixed_on_the_host_never_in_a_root_container():
     for document in ("docs/backup-and-recovery.md", "docs/deployment.md"):
         text = (REPO_ROOT / document).read_text(encoding="utf-8")
 
-        assert "--user 0:0 --cap-add CHOWN web chown" in text
+        assert "--cap-add CHOWN" not in text
+        assert "sudo chown" in text
 
 
 def test_content_scan_flags_private_content(tmp_path):

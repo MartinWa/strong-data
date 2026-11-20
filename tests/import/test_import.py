@@ -1,7 +1,9 @@
+from datetime import UTC, datetime
 from decimal import Decimal
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.test import override_settings
 
 from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
 from workouts.services import EmptyImportError, import_workouts_csv
@@ -51,6 +53,30 @@ def test_import_stores_owner_scoped_rows_and_derived_fields():
     assert bodyweight.weight_kg is None
     assert bodyweight.volume_kg == Decimal("0.00")
     assert bodyweight.est_1rm_kg is None
+
+
+@pytest.mark.django_db
+def test_wall_clock_times_are_read_in_the_configured_zone():
+    user = get_user_model().objects.create_user(username="tz", password="x")
+
+    with override_settings(TIME_ZONE="Europe/Stockholm"):
+        import_workouts_csv(user, FIRST_EXPORT)
+
+    session = WorkoutSession.objects.get(owner=user)
+    assert session.start_time == datetime(2026, 1, 5, 7, 30, tzinfo=UTC)
+    assert list(WorkoutSet.objects.filter(owner=user).order_by("set_time"))[0].set_time == datetime(
+        2026, 1, 5, 7, 30, tzinfo=UTC
+    )
+
+
+@pytest.mark.django_db
+def test_utc_remains_the_default_for_imports():
+    user = get_user_model().objects.create_user(username="utc", password="x")
+
+    import_workouts_csv(user, FIRST_EXPORT)
+
+    session = WorkoutSession.objects.get(owner=user)
+    assert session.start_time == datetime(2026, 1, 5, 8, 30, tzinfo=UTC)
 
 
 @pytest.mark.django_db

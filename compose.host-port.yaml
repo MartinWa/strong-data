@@ -1,0 +1,5 @@
+# Publish the app on loopback only, for a reverse proxy running on the host.
+services:
+  web:
+    ports:
+      - "127.0.0.1:${STRONG_HOST_PORT:-8000}:8000"

@@ -1,5 +1,4 @@
 from dataclasses import dataclass
-from datetime import UTC
 
 from django.db import transaction
 from django.utils import timezone
@@ -24,6 +23,8 @@ def import_workouts(user, parsed: ParsedWorkouts) -> ImportResult:
     if not parsed.sessions:
         raise EmptyImportError("CSV export contains no importable sets")
 
+    zone = timezone.get_default_timezone()
+
     with transaction.atomic():
         WorkoutSet.objects.filter(owner=user).delete()
         WorkoutSession.objects.filter(owner=user).delete()
@@ -45,7 +46,7 @@ def import_workouts(user, parsed: ParsedWorkouts) -> ImportResult:
                 session_date=item.session_date,
                 program=item.program,
                 workout_name=item.workout_name,
-                start_time=timezone.make_aware(item.start_time, UTC),
+                start_time=timezone.make_aware(item.start_time, zone),
                 duration_min=item.duration_min,
                 set_count=item.set_count,
                 total_volume_kg=item.total_volume_kg,
@@ -68,7 +69,7 @@ def import_workouts(user, parsed: ParsedWorkouts) -> ImportResult:
                         rpe=item.rpe,
                         distance=item.distance,
                         seconds=item.seconds,
-                        set_time=timezone.make_aware(item.set_time, UTC),
+                        set_time=timezone.make_aware(item.set_time, zone),
                         volume_kg=item.volume_kg,
                         est_1rm_kg=item.est_1rm_kg,
                     )

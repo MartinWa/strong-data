@@ -19,7 +19,7 @@ One row per workout performed on a date.
 | `session_date` | date | Local date of the workout |
 | `program` | varchar(255) | Derived: `workout_name` with a trailing ` #N` removed |
 | `workout_name` | varchar(255) | Raw name from the export, e.g. `Push Day #1` |
-| `start_time` | datetime | Earliest `set_time` in the session, UTC |
+| `start_time` | datetime | Earliest `set_time` in the session, stored UTC |
 | `duration_min` | integer, null | Parsed from the export's `Duration` column |
 | `set_count` | integer, default 0 | Derived: number of sets in the session |
 | `total_volume_kg` | decimal(12,2), default 0 | Derived: sum of the session's `volume_kg` |
@@ -44,7 +44,7 @@ One row per set.
 | `rpe` | decimal(3,1), null | 6.0–10.0 in 0.5 steps, otherwise null |
 | `distance` | decimal(8,2), null | For distance-based sets |
 | `seconds` | decimal(8,2), null | For timed sets |
-| `set_time` | datetime | Timestamp from the export, UTC |
+| `set_time` | datetime | Timestamp from the export, read in `STRONG_TIME_ZONE` and stored UTC |
 | `volume_kg` | decimal(12,2), default 0 | Derived: `COALESCE(weight_kg, 0) * reps` |
 | `est_1rm_kg` | decimal(8,2), null | Derived: Epley estimate, null for bodyweight |
 

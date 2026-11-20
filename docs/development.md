@@ -12,8 +12,12 @@ uv run python manage.py migrate
 ```
 
 Configuration is read from the environment: `STRONG_SECRET_KEY`, `STRONG_DEBUG`,
-`STRONG_ALLOWED_HOSTS` and `STRONG_DB_PATH`. See `.env.example`; never commit a real
-`.env`.
+`STRONG_ALLOWED_HOSTS`, `STRONG_DB_PATH` and `STRONG_TIME_ZONE`. See `.env.example`;
+never commit a real `.env`.
+
+`STRONG_TIME_ZONE` sets the zone Strong exports' wall-clock timestamps are read in,
+and the zone the UI and API render. It defaults to `UTC`; the development container
+keeps it there so tests and screenshots are stable.
 
 With `STRONG_DEBUG` unset the app runs in production mode and refuses to start
 without a real `STRONG_SECRET_KEY`. For local commands either export a key or set

@@ -75,6 +75,12 @@ JSON request and response bodies. Dates are ISO `YYYY-MM-DD`; timestamps are ISO
 8601 in UTC with a trailing `Z` (for example `2026-01-05T09:00:00Z`). All numeric
 values are JSON numbers and missing values are JSON `null` (never `0`).
 
+The export records wall-clock times without an offset, so they are absolute only
+relative to the installation's `STRONG_TIME_ZONE` (default `UTC`), which is read at
+import time. Two installations with different zones that import the same file will
+therefore store different UTC instants; a client should not assume the `Z` value
+equals the clock in the export.
+
 ## Validation guardrails
 
 - Integer fields reject floats, booleans and non-integer strings (so `limit=50.5`
