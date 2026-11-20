@@ -3,7 +3,7 @@ from typing import Literal
 from ninja import Router
 
 from ..contract import envelope
-from ..params import OptBoolParam, OptDateParam, StrictQuery, validate_date_range
+from ..params import OptBoolParam, OptDateParam, OptFilterParam, StrictQuery, validate_date_range
 from ..queries import series_data
 from ..schemas import SeriesOut
 
@@ -29,7 +29,7 @@ def series_sessions(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(request, "sessions", bucket, group_by, start, end, moving_average, program)
 
@@ -42,7 +42,7 @@ def series_volume(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(request, "volume", bucket, group_by, start, end, moving_average, program)
 
@@ -60,7 +60,7 @@ def series_volume_per_session(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(
         request, "volume-per-session", bucket, group_by, start, end, moving_average, program
@@ -77,6 +77,6 @@ def series_training_time(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(request, "training-time", bucket, group_by, start, end, moving_average, program)

@@ -1,7 +1,7 @@
 from ninja import Router
 
 from ..contract import envelope
-from ..params import OptDateParam, StrictQuery, validate_date_range
+from ..params import OptDateParam, OptFilterParam, StrictQuery, validate_date_range
 from ..queries import bodyweight_record_data, est_1rm_record_data
 from ..schemas import BodyweightRecordOut, Est1rmRecordOut
 
@@ -18,7 +18,7 @@ def est_1rm_records(
     request,
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     validate_date_range(start, end)
     return {**envelope(), **est_1rm_record_data(request.auth, start, end, program)}
@@ -34,7 +34,7 @@ def bodyweight_records(
     request,
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     validate_date_range(start, end)
     return {**envelope(), **bodyweight_record_data(request.auth, start, end, program)}

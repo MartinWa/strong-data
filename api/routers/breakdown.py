@@ -1,7 +1,14 @@
 from ninja import Router
 
 from ..contract import envelope
-from ..params import IntParam, OptDateParam, StrictQuery, validate_date_range, validate_pagination
+from ..params import (
+    IntParam,
+    OptDateParam,
+    OptFilterParam,
+    StrictQuery,
+    validate_date_range,
+    validate_pagination,
+)
 from ..queries import breakdown_data
 from ..schemas import BreakdownOut
 
@@ -25,7 +32,7 @@ def breakdown_weekday(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(request, "weekday", start, end, limit, program)
 
@@ -38,7 +45,7 @@ def breakdown_program(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(request, "program", start, end, limit, program)
 
@@ -51,7 +58,7 @@ def breakdown_muscle(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(request, "muscle", start, end, limit, program)
 
@@ -67,6 +74,6 @@ def breakdown_exercises(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     limit: IntParam = StrictQuery(50),
-    program: str | None = StrictQuery(None),
+    program: OptFilterParam = StrictQuery(None),
 ):
     return _build(request, "exercises", start, end, limit, program)

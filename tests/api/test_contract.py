@@ -388,3 +388,16 @@ def test_pace_curve_covers_full_earlier_years(client):
     assert curve[-1]["year"] == 2026
     assert curve[-1]["day_of_year"] == 10
     assert curve[-1]["cumulative_sessions"] == 1
+
+def test_an_empty_program_behaves_like_no_filter(auth):
+    unfiltered = auth.get(BASE + "/summary").json()
+    empty = auth.get(BASE + "/summary?program=").json()
+    for field in ("sessions", "sets", "volume_kg", "hours"):
+        assert empty[field] == unfiltered[field]
+
+    assert auth.get(BASE + "/yearly/pace?program=").json()["ytd"] == auth.get(
+        BASE + "/yearly/pace"
+    ).json()["ytd"]
+    assert auth.get(BASE + "/breakdown/muscle?program=").json()["items"] == auth.get(
+        BASE + "/breakdown/muscle"
+    ).json()["items"]

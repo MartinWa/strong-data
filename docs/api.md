@@ -115,6 +115,9 @@ where the schema lists them. `program`, `exercise` and `muscle` match exactly an
 `program` is the derived value described above, so `program=Push Day` matches
 `Push Day #1` and `Push Day #2`.
 
+An empty `program` is the same as omitting it, so a dashboard's All option can
+always send the parameter.
+
 `program` is available on `/summary`, `/sessions`, `/sets`, every `/series/*`
 endpoint, every `/breakdown/*` endpoint, `/yearly`, `/yearly/pace`,
 `/records/est-1rm` and `/records/bodyweight`. `start` and `end` are also accepted

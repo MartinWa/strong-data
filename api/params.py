@@ -46,9 +46,16 @@ def _strict_date(value):
     raise ValueError("must be a YYYY-MM-DD date")
 
 
+def _empty_to_none(value):
+    if value == "":
+        return None
+    return value
+
+
 IntParam = Annotated[int, BeforeValidator(_strict_int)]
 OptIntParam = Annotated[int | None, BeforeValidator(_strict_int)]
 BoolParam = Annotated[bool, BeforeValidator(_strict_bool)]
+OptFilterParam = Annotated[str | None, BeforeValidator(_empty_to_none)]
 OptBoolParam = Annotated[bool | None, BeforeValidator(_strict_bool)]
 DateParam = Annotated[date, BeforeValidator(_strict_date)]
 OptDateParam = Annotated[date | None, BeforeValidator(_strict_date)]
