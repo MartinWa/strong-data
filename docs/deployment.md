@@ -28,25 +28,33 @@ docker build --target production -t strong-data:local .
 docker compose -f compose.yaml -f compose.local-build.yaml up -d
 ```
 
+`compose.local-build.yaml` always builds and tags `strong-data:local`, whatever
+`STRONG_IMAGE` says, so it cannot quietly deploy a published image or overwrite a
+release tag with local source.
+
 ## Configuration
 
 `compose.yaml` reads its values from a private `.env` file next to it, or from the
-shell when they are exported there. Only two values have no usable default:
+shell when they are exported there. Three values have no usable default:
 
 ```sh
 cp .env.example .env
 # edit .env: set STRONG_SECRET_KEY and STRONG_ALLOWED_HOSTS
 ```
 
-Production configuration is mandatory rather than optional: the application
-refuses to start when `STRONG_SECRET_KEY` is missing or still the `.env.example`
-placeholder, so a copied example file cannot be deployed by accident.
+The third, `STRONG_TRUSTED_PROXY`, already ships as `*` in the example file, which is
+correct when the container is reachable only from a trusted Docker network or a
+loopback port. Production configuration is mandatory rather than optional: the
+application refuses to start when `STRONG_SECRET_KEY` is missing or still the
+`.env.example` placeholder, and the server refuses to start without
+`STRONG_TRUSTED_PROXY`, so a copied example cannot be deployed by accident and a
+hand-written file fails loudly instead of half-working.
 
 | Variable | Default | Meaning |
 | --- | --- | --- |
 | `STRONG_SECRET_KEY` | none, required | Django secret. Generate one per installation: `python -c "import secrets; print(secrets.token_urlsafe(50))"`. `STRONG_SECRET_KEY_FILE` reads the value from a file instead, for Docker or Podman secrets. |
 | `STRONG_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated public hostnames the proxy forwards, e.g. `workouts.example.com`. Requests with any other `Host` are rejected. |
-| `STRONG_TRUSTED_PROXY` | `*` in Compose | Address allowed to set forwarding headers. Compose sets `*`, which is correct when the container is reachable only from a trusted Docker network or a loopback port. Set it to the proxy's container address to narrow it. The server refuses to start without a value, because `X-Forwarded-Proto` would be ignored and HTTPS form submissions would fail the CSRF origin check. |
+| `STRONG_TRUSTED_PROXY` | none, required | Address allowed to set forwarding headers. The example file ships `*`, which is correct when the container is reachable only from a trusted Docker network or a loopback port; set it to the proxy's container address to narrow it. The server refuses to start without a value, because `X-Forwarded-Proto` would otherwise be ignored and HTTPS form submissions would fail the CSRF origin check. |
 | `STRONG_IMAGE` | `ghcr.io/martinwa/strong-data:latest` | Image tag or digest to deploy. |
 | `STRONG_TIME_ZONE` | `UTC` | IANA zone name, e.g. `Europe/Stockholm`. Strong exports record wall-clock local time with no offset, so imports are interpreted in this zone and every date in the UI and API is rendered in it. It applies at import time: changing it later does not rewrite existing rows. |
 | `PUID` / `PGID` | `1000` / `1000` | UID and GID the process runs as and that must own the `data` directory. |
@@ -63,7 +71,8 @@ placeholder, so a copied example file cannot be deployed by accident.
 
 The Compose file holds no defaults of its own: it passes the application variables
 through untouched, so a value in `.env` (or exported in the shell) is what the
-container sees, and an unset value falls back to the default in the table.
+container sees, and an unset value falls back to the default in the table — except
+the three with no default, which stop startup instead.
 `STRONG_DB_PATH` and `STRONG_STATIC_ROOT` come from the image; `STRONG_DEBUG` and
 `STRONG_PORT` are deliberately not passed. Compose merges a `compose.override.yaml`
 next to `compose.yaml` automatically, which is the place to add anything extra:

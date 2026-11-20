@@ -100,8 +100,34 @@ def test_optional_overrides_cover_the_documented_patterns():
     assert '"127.0.0.1:${STRONG_HOST_PORT:-8000}:8000"' in host_port
     assert "external: true" in proxy_network
     assert 'name: "${PROXY_NETWORK:?Set the existing private proxy network}"' in proxy_network
+    assert "image: strong-data:local" in local_build
+    assert "pull_policy: build" in local_build
     assert "target: production" in local_build
-    assert "build:" in local_build
+    assert "STRONG_IMAGE" not in local_build
+
+
+def test_required_settings_are_documented_consistently():
+    example = (REPO_ROOT / ".env.example").read_text(encoding="utf-8").splitlines()
+    deployment = (REPO_ROOT / "docs/deployment.md").read_text(encoding="utf-8")
+
+    assert example[:3] == [
+        "STRONG_SECRET_KEY=replace-with-a-long-random-value",
+        "STRONG_ALLOWED_HOSTS=workouts.example.com",
+        "STRONG_TRUSTED_PROXY=*",
+    ]
+    assert "Three values have no usable default" in deployment
+    assert "| `STRONG_TRUSTED_PROXY` | none, required |" in deployment
+
+
+def test_release_checks_and_attests_each_platform():
+    text = (REPO_ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+
+    assert "platforms: linux/amd64" in text
+    assert "platforms: linux/arm64" in text
+    assert text.count("push-by-digest=true") == 2
+    assert text.count("bash tools/check_release_image.sh") == 2
+    assert "sbom-amd64.spdx.json" in text
+    assert "sbom-arm64.spdx.json" in text
 
 
 def test_contributor_agreement_allows_commercial_relicensing():

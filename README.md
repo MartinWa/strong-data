@@ -24,7 +24,8 @@ docker pull ghcr.io/martinwa/strong-data:latest
 #   and set STRONG_IMAGE=strong-data:local in .env
 
 mkdir -p data && sudo chown -R 1000:1000 data
-cp .env.example .env      # STRONG_SECRET_KEY, STRONG_ALLOWED_HOSTS, STRONG_TIME_ZONE
+cp .env.example .env      # STRONG_SECRET_KEY and STRONG_ALLOWED_HOSTS; the example
+                          # already sets STRONG_TRUSTED_PROXY=*
 docker compose up -d
 docker network connect strong-data caddy   # your proxy, forwarding to web:8000
 ```
@@ -32,8 +33,8 @@ docker network connect strong-data caddy   # your proxy, forwarding to web:8000
 The database lives in `./data` on the host, so backups are plain files. If your
 proxy runs on the host instead of in a container, add the loopback port with
 `-f compose.host-port.yaml`. To build from this working copy rather than pull a
-release, add `-f compose.local-build.yaml`. All variables, both proxy patterns and
-the upgrade path are in `docs/deployment.md`.
+release, add `-f compose.local-build.yaml`, which builds and tags `strong-data:local`. All
+variables, both proxy patterns and the upgrade path are in `docs/deployment.md`.
 
 For a local dev server with no `.env` required:
 

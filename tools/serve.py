@@ -14,8 +14,9 @@ PORT = int(os.environ.get("STRONG_PORT", "8000"))
 if TRUSTED_PROXY is None:
     raise SystemExit(
         "STRONG_TRUSTED_PROXY must be set to the reverse proxy address, or to * when the "
-        "app is reachable only from a trusted container network. Without it the proxy's "
-        "X-Forwarded-Proto header is ignored and HTTPS form submissions fail CSRF checks."
+        "app is reachable only from a trusted container network. The example .env file "
+        "ships *. Without it the proxy's X-Forwarded-Proto header is ignored and HTTPS "
+        "form submissions fail CSRF checks."
     )
 
 
