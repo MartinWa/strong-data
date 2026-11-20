@@ -1,6 +1,8 @@
-<div class="field{% if field.errors %} field-invalid{% endif %}">
+<div class="field{% if field.errors or force_invalid %} field-invalid{% endif %}">
   <label for="{{ field.id_for_label }}">{{ field.label }}{% if field.field.required %} <span class="req" aria-hidden="true">*</span>{% endif %}</label>
   {{ field }}
   {% if field.help_text %}<p class="hint" id="{{ field.auto_id }}_helptext">{{ field.help_text }}</p>{% endif %}
+  {% if force_invalid %}<div id="{{ field.auto_id }}_error"><p class="error">{{ force_invalid }}</p></div>{% endif %}
+  {% if client_error %}<p class="error" id="{{ field.auto_id }}_client_error" role="status" hidden data-client-error></p>{% endif %}
   {% if field.errors %}<div id="{{ field.auto_id }}_error">{% for error in field.errors %}<p class="error">{{ error }}</p>{% endfor %}</div>{% endif %}
 </div>

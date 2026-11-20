@@ -9,7 +9,11 @@ MUSCLE_CHOICES = sorted({muscle for _, muscle in MUSCLE_GUESS} | {"Other"})
 
 
 class UploadForm(forms.Form):
-    csv_file = forms.FileField(label="Strong CSV export")
+    csv_file = forms.FileField(
+        label="Strong CSV export",
+        help_text="Up to 10 MB. Nothing is written until you confirm on the next page.",
+        widget=forms.ClearableFileInput(attrs={"accept": ".csv,text/csv"}),
+    )
 
 
 class MuscleGroupForm(forms.Form):

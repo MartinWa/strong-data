@@ -17,13 +17,15 @@ from parsing import InvalidCSVError, parse_workouts
 
 from . import pending
 from .forms import MUSCLE_CHOICES, MuscleGroupForm, TokenForm, UploadForm
-from .models import ApiToken, ExerciseMeta, WorkoutSession, WorkoutSet
+from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from .services import EmptyImportError, import_workouts_csv
 
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024
 MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 PENDING_IMPORT_KEY = "pending_import"
 SESSIONS_PAGE_SIZE = 25
+TOO_LARGE_MESSAGE = "CSV export must be 10 MB or smaller. Choose a smaller file."
+PREVIEW_MISSING_MESSAGE = "Your preview expired or was not found. Upload the CSV again."
 
 
 def _discard_pending(request, import_id):
@@ -46,22 +48,35 @@ def _optional_date(value):
         return None
 
 
+def _render_upload(request, form, too_large=None):
+    if too_large:
+        form.fields["csv_file"].widget.attrs["aria-describedby"] = (
+            "id_csv_file_helptext id_csv_file_error"
+        )
+    return render(
+        request,
+        "workouts/upload.html",
+        {
+            "form": form,
+            "too_large": too_large,
+            "max_upload_bytes": MAX_UPLOAD_BYTES,
+            "too_large_message": TOO_LARGE_MESSAGE,
+        },
+    )
+
+
 @login_required
 def upload(request):
     if request.method == "POST":
         content_length = request.META.get("CONTENT_LENGTH", "")
         size = int(content_length) if content_length.isdigit() else 0
         if size > MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES:
-            return render(
-                request,
-                "workouts/upload.html",
-                {"form": UploadForm(), "too_large": True},
-            )
+            return _render_upload(request, UploadForm(), too_large=TOO_LARGE_MESSAGE)
         form = UploadForm(request.POST, request.FILES)
         if form.is_valid():
             upload_file = form.cleaned_data["csv_file"]
             if upload_file.size > MAX_UPLOAD_BYTES:
-                form.add_error("csv_file", "CSV export must be 10 MB or smaller.")
+                form.add_error("csv_file", TOO_LARGE_MESSAGE)
             else:
                 try:
                     raw = upload_file.read().decode("utf-8-sig")
@@ -90,7 +105,7 @@ def upload(request):
                             return redirect("preview")
     else:
         form = UploadForm()
-    return render(request, "workouts/upload.html", {"form": form})
+    return _render_upload(request, form)
 
 
 @login_required
@@ -98,6 +113,7 @@ def preview(request):
     pending.purge_stale()
     stored = request.session.get(PENDING_IMPORT_KEY)
     if not stored:
+        messages.warning(request, PREVIEW_MISSING_MESSAGE)
         return redirect("upload")
     import_id = stored["id"]
     if time.time() - stored.get("created_at", 0) > pending.PENDING_TTL_SECONDS:
@@ -112,6 +128,10 @@ def preview(request):
             posted_id.encode(), import_id.encode()
         ) or not hmac.compare_digest(posted_fingerprint.encode(), stored["fingerprint"].encode()):
             messages.error(request, "This preview is stale. Upload the CSV again.")
+            return redirect("upload")
+        if request.POST.get("action") == "cancel":
+            _discard_pending(request, import_id)
+            messages.info(request, "Preview discarded. Nothing was imported.")
             return redirect("upload")
         raw = pending.load_csv(import_id)
         if raw is None:
@@ -135,6 +155,8 @@ def preview(request):
             "summary": summary,
             "import_id": import_id,
             "fingerprint": stored["fingerprint"],
+            "current_sessions": WorkoutSession.objects.filter(owner=request.user).count(),
+            "current_sets": WorkoutSet.objects.filter(owner=request.user).count(),
         },
     )
 
@@ -189,6 +211,7 @@ def delete_sessions(request):
     set_total = WorkoutSet.objects.filter(owner=request.user).count()
     with transaction.atomic():
         owned.delete()
+        Exercise.objects.filter(owner=request.user).delete()
     messages.success(
         request,
         f"Deleted {session_total} session{'' if session_total == 1 else 's'} "

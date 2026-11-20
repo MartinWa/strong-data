@@ -9,15 +9,46 @@ Accounts are administrator-managed; there is no public signup. Log in at
 except the login form requires a session, and every user
 sees only their own imports, corrections and tokens.
 
+## Get the CSV out of Strong
+
+strong-data reads Strong's workouts CSV. Strong has no signup and no API for
+this data, so the export is the only way in:
+
+1. Open the Strong app and go to your profile or its settings screen.
+2. Choose **Export workouts** (some versions label it **Export data**) and export
+   the CSV.
+3. Save the file, then choose it on `/upload/`; the preview opens as soon as the
+   file is chosen.
+
+The upload page carries the same three steps, so the export instructions are
+available at the point of use.
+
 ## Import an export
 
-1. **Upload** (`/upload/`) — choose the CSV file Strong exported and press
-   *Preview*. The file must be a Strong export with the `Date`, `Workout Name`,
+1. **Upload** (`/upload/`) — choose the CSV file Strong exported. Choosing it
+   submits the upload and opens the preview; with JavaScript off the page keeps a
+   *Preview* button instead. A pick larger than 10 MB is refused in the browser,
+   beside the field, before anything is sent, so the chosen file is never lost to
+   a round trip. The file must be a Strong export with the `Date`, `Workout Name`,
    `Exercise Name`, `Set Order`, `Weight` and `Reps` headers, and at most 10 MB.
+   Extra columns are ignored; `Duration`, `Distance`, `Seconds` and `RPE` are used
+   when present. Nothing on this page talks about replacement: the import is only
+   described once, on the preview page.
 2. **Preview** (`/preview/`) — review the session summary (date, workout,
    program, set count, volume, duration), the first 20 sets as a sample, and any
-   warnings, then press *Confirm import*. The summary covers every session; only
-   the set table is sampled, and confirming imports all sets.
+   warnings, then press *Confirm import*. Both tables are newest first, like the
+   Sessions page, so the newest session is the first row and the sample starts
+   with its sets. The sample is grouped by exercise, each group headed by the
+   exercise name and its set count; the date and workout name label the first
+   group of each session, so a sample that runs into an older workout is not
+   ambiguous. The summary covers every session; only the set table is
+   sampled, and confirming imports all sets. Sessions beyond the first 10 are
+   behind *Show all* so the confirm bar stays in reach. The sticky
+   bar at the bottom states what confirming replaces (`Confirming replaces 14
+   sessions and 99 sets currently stored.`) or, on an empty account, that this is
+   the first import. *Cancel* next to it throws the preview away: the staged file
+   is deleted straight away instead of waiting for the scheduled sweep, and nothing
+   is imported. Uploading again replaces an earlier preview the same way.
 3. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 sessions
    per page. Each row expands to show its sets.
 
@@ -59,9 +90,11 @@ preview and do not stop the import.
 | RPE outside 6.0–10.0 or not in 0.5 steps | Stored as null, warning shown |
 | Duration that cannot be parsed | Stored as null |
 
-Skipped rows are never silently dropped: each one appears in the preview's
-warning list with its CSV line number. The preview shows the first 50 warnings and
-reports how many more there are.
+Skipped rows are never silently dropped: each one is counted in the preview's
+warning list. The preview reports how many warnings were raised and how many rows
+they affect, since one row can raise more than one warning. Warnings are grouped by
+cause with a count, and each group expands to the first 20 CSV line numbers plus how
+many further lines share that cause.
 
 A `Weight` of `0` is treated as bodyweight, exactly like an empty `Weight`: the
 set is stored with no weight, contributes no volume and appears in bodyweight

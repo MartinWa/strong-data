@@ -41,6 +41,7 @@ cp .env.example .env
 | `STRONG_DB_PATH` | SQLite path inside the container; keep the default `/app/data/strong.sqlite3` so it lands on the data volume. |
 | `STRONG_STATIC_ROOT` | Where collected static files live (the image ships them at `/app/staticfiles`). Override only for special setups. |
 | `STRONG_PENDING_DIR` | Where previewed-but-unconfirmed uploads are staged. Defaults to `/tmp/strong-data-pending`, which lands on the container's `/tmp` tmpfs; override only if you mount a dedicated volume. |
+| `STRONG_PENDING_SWEEP_SECONDS` | How often the server deletes staged uploads whose preview expired (default `900`, i.e. every 15 minutes). `0` turns the background sweep off, for an installation that prefers an external `manage.py purge_pending` schedule. |
 | `STRONG_CSRF_TRUSTED_ORIGINS` | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
 | `STRONG_UPDATE_CHECK` | `true` (default) lets the footer ask GitHub for the latest stable release and show a dot when a newer one exists. The answer is cached for six hours and the request never blocks page rendering. Set `false` for an installation that must make no outbound requests. |
 | `STRONG_PORT` | Listen port inside the container (default `8000`). |
@@ -100,6 +101,34 @@ docker compose exec web python manage.py createsuperuser
 
 Users, muscle-group corrections and bearer tokens are all managed in the web UI
 and remain scoped to their owner. See `docs/usage.md` and `docs/api.md`.
+
+## Housekeeping
+
+A CSV is staged on disk until it is confirmed or cancelled. Confirm and Cancel
+delete it immediately, as does the next upload from the same browser; the sweep
+catches what is left behind, deleting every staged file older than one hour. It
+runs in two places: on a background thread in the server process every
+`STRONG_PENDING_SWEEP_SECONDS` (default 900), starting once at boot, and at the
+start of any request that reaches the upload, preview or sessions page.
+
+`tools/serve.py` starts the thread, so the production image sweeps itself and no
+timer, cron job or extra service is needed or configured: the thread lives with
+the web process that owns the staging directory. The development server
+(`runserver`) has no thread, and sweeps on request as it always did.
+
+Set `STRONG_PENDING_SWEEP_SECONDS=0` to disable the thread and drive the sweep
+yourself:
+
+```sh
+docker compose exec -T web python manage.py purge_pending [--ttl SECONDS]
+```
+
+Use `exec`, not `run`: pending files live in the container's `/tmp` tmpfs, which a
+fresh container would not see. The same asymmetry applies to an external cron job
+— it must run inside the running web container. If you disable the thread, sweep
+at least as often as a preview can live (one hour) so abandoned uploads do not
+pile up. An installation that mounts a dedicated volume at `STRONG_PENDING_DIR` can
+run the command from any container instead.
 
 ## Verify and upgrade
 

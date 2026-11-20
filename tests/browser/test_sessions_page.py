@@ -2,7 +2,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.urls import reverse
 
-from workouts.models import ApiToken, ExerciseMeta, WorkoutSession, WorkoutSet
+from workouts.models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from workouts.services import import_workouts_csv
 
 HEADER = "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
@@ -91,14 +91,16 @@ def test_program_is_shown_when_it_differs_from_the_workout_name(client):
 
 
 @pytest.mark.django_db
-def test_empty_state_is_not_repeated(client):
+def test_empty_state_states_the_state_once_and_leaves_the_action_to_the_button(client):
     user = get_user_model().objects.create_user(username="alice", password="x")
     client.force_login(user)
 
     content = client.get(reverse("sessions")).content.decode()
 
     assert content.count("No sessions yet.") == 1
-    assert content.count("Upload a Strong CSV export to see your workouts here.") == 1
+    assert content.count("Your imported workouts appear here, newest first.") == 1
+    assert "Upload a Strong CSV export" not in content
+    assert content.count(">Upload CSV export<") == 1
 
 
 @pytest.mark.django_db
@@ -127,6 +129,7 @@ def test_delete_removes_sessions_and_sets_but_keeps_corrections_and_tokens(clien
     assert response.url == reverse("sessions")
     assert not WorkoutSession.objects.filter(owner=user).exists()
     assert not WorkoutSet.objects.filter(owner=user).exists()
+    assert not Exercise.objects.filter(owner=user).exists()
     assert set(ExerciseMeta.objects.filter(owner=user).values_list("muscle_group", flat=True)) == {
         "Chest"
     }
@@ -143,6 +146,8 @@ def test_delete_is_owner_scoped(client):
 
     assert not WorkoutSession.objects.filter(owner=alice).exists()
     assert WorkoutSession.objects.filter(owner=bob).exists()
+    assert not Exercise.objects.filter(owner=alice).exists()
+    assert Exercise.objects.filter(owner=bob).exists()
 
 
 @pytest.mark.django_db

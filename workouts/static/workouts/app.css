@@ -433,6 +433,10 @@ main.container {
   white-space: nowrap;
 }
 
+.table .nowrap {
+  white-space: nowrap;
+}
+
 .badge {
   display: inline-block;
   padding: 0.15rem 0.55rem;
@@ -461,6 +465,12 @@ main.container {
   background: var(--success-soft);
   border-color: transparent;
   color: var(--success);
+}
+
+.badge-warning {
+  background: var(--warning-soft);
+  border-color: transparent;
+  color: var(--warning);
 }
 
 .form {
@@ -567,6 +577,10 @@ input[type="file"]::file-selector-button {
 input[type="file"]::file-selector-button:hover {
   background: var(--accent-soft);
   border-color: var(--accent);
+}
+
+.field-invalid input[type="file"] {
+  border-color: var(--danger);
 }
 
 .btn {
@@ -710,22 +724,112 @@ input[type="file"]::file-selector-button:hover {
   margin-bottom: 0.15rem;
 }
 
-.warnings {
+.warning-groups {
   list-style: none;
   margin: 0;
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.35rem;
+  gap: 0.4rem;
+}
+
+.warning-group details {
+  padding: 0.5rem 0.7rem;
+  background: var(--warning-soft);
+  border-radius: 6px;
+}
+
+.warning-group summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   font-size: 0.88rem;
-  font-family: var(--mono);
+  cursor: pointer;
+}
+
+.warning-group .badge {
+  background: var(--surface);
+  border-color: color-mix(in srgb, var(--warning) 35%, transparent);
   color: var(--warning);
 }
 
-.warnings li {
-  padding: 0.35rem 0.6rem;
-  background: var(--warning-soft);
-  border-radius: 6px;
+.warning-lines {
+  margin: 0.4rem 0 0;
+  font-family: var(--mono);
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.show-all {
+  margin-top: 0.75rem;
+}
+
+.show-all > summary {
+  width: fit-content;
+  font-size: 0.88rem;
+  color: var(--accent);
+  cursor: pointer;
+}
+
+.show-all[open] > summary {
+  margin-bottom: 0.75rem;
+}
+
+.export-help {
+  margin-top: 1.5rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border);
+  font-size: 0.9rem;
+}
+
+.export-help summary {
+  width: fit-content;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.export-help summary:hover {
+  color: var(--accent);
+}
+
+.export-help[open] summary {
+  margin-bottom: 0.75rem;
+}
+
+.export-help ol {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 0 0.75rem;
+  padding-left: 1.25rem;
+  color: var(--muted);
+}
+
+.export-help p {
+  margin: 0;
+}
+
+.action-bar {
+  position: sticky;
+  bottom: 1rem;
+  z-index: 5;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  border-color: var(--border-strong);
+}
+
+.action-bar .actions {
+  margin-left: auto;
+}
+
+.action-summary {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
 }
 
 .empty {
@@ -902,7 +1006,8 @@ input[type="file"]::file-selector-button:hover {
   padding-bottom: 0.25rem;
 }
 
-.set-group th {
+.set-group th,
+.sample-group th {
   border-top: 1px solid var(--border);
   background: transparent;
   color: var(--text);
@@ -911,6 +1016,20 @@ input[type="file"]::file-selector-button:hover {
   letter-spacing: 0;
   text-transform: none;
   white-space: normal;
+}
+
+.table tbody:first-of-type .sample-group th {
+  border-top: 0;
+}
+
+.sample-group-session {
+  margin-right: 0.6rem;
+  padding: 0.05rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-weight: 400;
 }
 
 .table tbody:first-of-type .set-group th {
@@ -954,9 +1073,16 @@ input[type="file"]::file-selector-button:hover {
 
 .danger-confirm {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: flex-end;
   gap: 0.6rem;
   margin: 0;
+}
+
+.danger-confirm .btn {
+  white-space: normal;
+  text-align: center;
 }
 
 .auth {
@@ -1174,6 +1300,10 @@ input[type="file"]::file-selector-button:hover {
   .filters-actions {
     margin-left: 0;
   }
+
+  .table .secondary {
+    display: none;
+  }
 }
 
 @media print {
@@ -1192,5 +1322,9 @@ input[type="file"]::file-selector-button:hover {
   .table-wrap {
     box-shadow: none;
     border-color: #ccc;
+  }
+
+  .action-bar {
+    position: static;
   }
 }

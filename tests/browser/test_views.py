@@ -112,6 +112,7 @@ def test_upload_preview_confirm_flow(client):
         {
             "import_id": response.context["import_id"],
             "fingerprint": response.context["fingerprint"],
+            "action": "confirm",
         },
     )
     assert response.status_code == 302
@@ -268,7 +269,8 @@ def test_sessions_empty_state_prompts_upload(client):
 
     assert response.status_code == 200
     assert "No sessions yet." in content
-    assert "Upload a Strong CSV export to see your workouts here." in content
+    assert "Your imported workouts appear here, newest first." in content
+    assert "Upload a Strong CSV export" not in content
     assert 'href="/upload/"' in content
     assert 'aria-label="Filter sessions"' not in content
 
@@ -339,7 +341,7 @@ def test_sessions_no_match_state_offers_clear(client):
 
     content = client.get(reverse("sessions"), {"q": "deadlift"}).content.decode()
 
-    assert "No sessions match these filters." in content
+    assert content.count("No sessions match these filters.") == 1
     assert "Clear filters" in content
     assert "No sessions yet." not in content
 
@@ -396,6 +398,67 @@ def test_sessions_badges_pluralize_and_trim_volume(client):
     assert ">1 sets<" not in content
     assert ">480 kg<" in content
     assert "480.00 kg" not in content
+
+
+@pytest.mark.django_db
+def test_cancel_discards_the_pending_upload_without_importing(client, tmp_path):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    upload(client)
+    stored = client.session["pending_import"]
+
+    response = client.post(
+        reverse("preview"),
+        {
+            "import_id": stored["id"],
+            "fingerprint": stored["fingerprint"],
+            "action": "cancel",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.url == reverse("upload")
+    assert "pending_import" not in client.session
+    assert list((tmp_path / "pending").iterdir()) == []
+    assert WorkoutSession.objects.filter(owner=user).count() == 0
+
+
+@pytest.mark.django_db
+def test_cancel_from_an_earlier_tab_keeps_the_newer_upload(client, tmp_path):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    upload(client)
+    earlier = client.get(reverse("preview"))
+    earlier_import = {
+        "import_id": earlier.context["import_id"],
+        "fingerprint": earlier.context["fingerprint"],
+    }
+    upload(client, CSV.replace("Push Day #1", "Pull Day"))
+    newer = client.session["pending_import"]
+
+    response = client.post(reverse("preview"), {**earlier_import, "action": "cancel"})
+
+    assert response.status_code == 302
+    assert response.url == reverse("upload")
+    assert client.session["pending_import"] == newer
+    assert sorted(path.name for path in (tmp_path / "pending").iterdir()) == [
+        f"{newer['id']}.csv",
+        f"{newer['id']}.json",
+    ]
+    assert WorkoutSession.objects.filter(owner=user).count() == 0
+
+    response = client.post(
+        reverse("preview"),
+        {
+            "import_id": newer["id"],
+            "fingerprint": newer["fingerprint"],
+            "action": "confirm",
+        },
+    )
+
+    assert response.url == reverse("sessions")
+    names = WorkoutSession.objects.filter(owner=user).values_list("workout_name", flat=True)
+    assert list(names) == ["Pull Day"]
 
 
 @pytest.mark.django_db
@@ -569,6 +632,8 @@ def test_oversized_upload_is_rejected_before_the_file_is_read(client):
 
     assert response.status_code == 200
     assert b"CSV export must be 10 MB or smaller." in response.content
+    assert 'class="field field-invalid"' in response.content.decode()
+    assert "How to export from Strong" in response.content.decode()
 
 
 @pytest.mark.django_db

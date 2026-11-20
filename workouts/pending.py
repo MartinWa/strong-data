@@ -1,8 +1,10 @@
 import contextlib
 import json
+import logging
 import os
 import re
 import tempfile
+import threading
 import time
 from pathlib import Path
 
@@ -10,8 +12,9 @@ from parsing import ParsedWorkouts
 
 PENDING_TTL_SECONDS = 3600
 SAMPLE_SET_LIMIT = 20
-WARNING_LIMIT = 50
+WARNING_ROW_LIMIT = 20
 IMPORT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
+ROW_WARNING_PATTERN = re.compile(r"Row (\d+): (.+)")
 
 
 def pending_dir() -> Path:
@@ -80,21 +83,86 @@ def discard(import_id: str) -> None:
             continue
 
 
-def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> None:
+def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> int:
     try:
         entries = list(pending_dir().iterdir())
     except OSError:
-        return
+        return 0
     cutoff = time.time() - ttl_seconds
+    removed = 0
     for path in entries:
         try:
             if path.stat().st_mtime < cutoff:
                 path.unlink()
+                removed += 1
         except OSError:
             continue
+    return removed
+
+
+def start_sweeper(
+    interval_seconds: int, stop: threading.Event | None = None
+) -> threading.Thread | None:
+    if interval_seconds <= 0:
+        return None
+    thread = threading.Thread(
+        target=_sweep_forever,
+        args=(interval_seconds, stop or threading.Event()),
+        name="pending-sweeper",
+        daemon=True,
+    )
+    thread.start()
+    return thread
+
+
+def _sweep_forever(interval_seconds: int, stop: threading.Event) -> None:
+    logger = logging.getLogger(__name__)
+    while True:
+        try:
+            purge_stale()
+        except Exception:
+            logger.exception("Staged upload sweep failed")
+        if stop.wait(interval_seconds):
+            return
+
+
+def group_warnings(warnings: tuple[str, ...] | list[str]) -> list[dict]:
+    groups: dict[str, dict] = {}
+    for warning in warnings:
+        match = ROW_WARNING_PATTERN.fullmatch(warning)
+        message = match.group(2) if match else warning
+        group = groups.setdefault(
+            message,
+            {"message": message, "count": 0, "rows": [], "hidden_rows": 0},
+        )
+        group["count"] += 1
+        if match is None:
+            continue
+        if len(group["rows"]) < WARNING_ROW_LIMIT:
+            group["rows"].append(int(match.group(1)))
+        else:
+            group["hidden_rows"] += 1
+    return sorted(groups.values(), key=lambda group: (-group["count"], group["message"]))
+
+
+def count_warning_rows(warnings: tuple[str, ...] | list[str]) -> int:
+    lines: set[int] = set()
+    unattributed = 0
+    for warning in warnings:
+        match = ROW_WARNING_PATTERN.fullmatch(warning)
+        if match is None:
+            unattributed += 1
+        else:
+            lines.add(int(match.group(1)))
+    return len(lines) + unattributed
 
 
 def summarize(parsed: ParsedWorkouts) -> dict:
+    ordered_sessions = sorted(
+        reversed(parsed.sessions),
+        key=lambda session: session.session_date,
+        reverse=True,
+    )
     sessions = [
         {
             "date": session.session_date.isoformat(),
@@ -104,17 +172,23 @@ def summarize(parsed: ParsedWorkouts) -> dict:
             "total_volume_kg": str(round(session.total_volume_kg, 2)),
             "duration_min": session.duration_min,
         }
-        for session in parsed.sessions
+        for session in ordered_sessions
     ]
-    sample_sets = []
-    for session in parsed.sessions:
+    sample_groups = []
+    sample_set_count = 0
+    for session in ordered_sessions:
+        if sample_set_count >= SAMPLE_SET_LIMIT:
+            break
+        totals: dict[str, int] = {}
         for item in session.sets:
-            if len(sample_sets) >= SAMPLE_SET_LIMIT:
+            totals[item.exercise_name] = totals.get(item.exercise_name, 0) + 1
+        buckets: dict[str, list[dict]] = {}
+        for item in session.sets:
+            if sample_set_count >= SAMPLE_SET_LIMIT:
                 break
-            sample_sets.append(
+            buckets.setdefault(item.exercise_name, []).append(
                 {
                     "set_time": item.set_time.isoformat(sep=" "),
-                    "exercise_name": item.exercise_name,
                     "set_order": item.set_order,
                     "weight_kg": None if item.weight_kg is None else str(item.weight_kg),
                     "reps": item.reps,
@@ -125,14 +199,27 @@ def summarize(parsed: ParsedWorkouts) -> dict:
                     ),
                 }
             )
-        if len(sample_sets) >= SAMPLE_SET_LIMIT:
-            break
-    warnings = list(parsed.warnings[:WARNING_LIMIT])
+            sample_set_count += 1
+        for position, (exercise_name, sets) in enumerate(buckets.items()):
+            sample_groups.append(
+                {
+                    "session_date": session.session_date.isoformat(),
+                    "workout_name": session.workout_name,
+                    "starts_session": position == 0,
+                    "exercise_name": exercise_name,
+                    "set_count": len(sets),
+                    "hidden_sets": totals[exercise_name] - len(sets),
+                    "sets": sets,
+                }
+            )
+    warnings = list(parsed.warnings)
     return {
         "sessions": sessions,
         "exercises": list(parsed.exercises),
-        "warnings": warnings,
-        "hidden_warnings": len(parsed.warnings) - len(warnings),
-        "sample_sets": sample_sets,
+        "warning_total": len(warnings),
+        "warning_rows": count_warning_rows(warnings),
+        "warning_groups": group_warnings(warnings),
+        "sample_groups": sample_groups,
+        "sample_set_count": sample_set_count,
         "total_sets": sum(session.set_count for session in parsed.sessions),
     }

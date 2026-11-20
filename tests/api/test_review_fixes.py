@@ -6,6 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.db import OperationalError, connection
 from django.test.utils import CaptureQueriesContext
+from django.urls import reverse
 from django.utils import timezone
 
 import api.auth as auth_module
@@ -328,6 +329,23 @@ def test_zero_weight_sets_are_bodyweight_everywhere(client):
 
     weighted = client.get(BASE + "/sets?weighted=true").json()
     assert [row["exercise"] for row in weighted["items"]] == ["Bench Press"]
+
+
+@pytest.mark.django_db
+def test_deleting_all_sessions_clears_the_exercise_reference(client):
+    user = make_token_user(client, "deleted", "deleted-secret")
+    csv = (
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2026-01-05 09:00:00,Push,30m,Bench Press,1,80,5,0,0,\n"
+        "2026-01-05 09:05:00,Push,30m,Chest Fly,1,20,12,0,0,\n"
+    )
+    import_workouts_csv(user, csv)
+    assert client.get(BASE + "/exercises").json()["items"] == ["Bench Press", "Chest Fly"]
+
+    client.force_login(user)
+    client.post(reverse("delete_sessions"))
+
+    assert client.get(BASE + "/exercises").json()["items"] == []
 
 
 @pytest.mark.django_db

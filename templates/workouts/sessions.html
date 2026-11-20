@@ -12,8 +12,6 @@
   <p class="lede">
     {{ page.paginator.count }} session{{ page.paginator.count|pluralize }}{% if filtered %} matching your filters{% else %} stored for your account{% endif %}.
   </p>
-  {% elif has_data %}
-  <p class="lede">No sessions match these filters.</p>
   {% endif %}
 </div>
 
@@ -54,7 +52,7 @@
   <a class="btn" href="{% url 'sessions' %}">Clear filters</a>
   {% else %}
   <p>No sessions yet.</p>
-  <p>Upload a Strong CSV export to see your workouts here.</p>
+  <p class="small">Your imported workouts appear here, newest first.</p>
   <a class="btn btn-primary" href="{% url 'upload' %}">Upload CSV export</a>
   {% endif %}
 </div>
