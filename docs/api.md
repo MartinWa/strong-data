@@ -75,7 +75,7 @@ the clock in the export.
   declare no filters, where any query parameter is `422`. No value is silently
   coerced to zero or clamped.
 - `start <= end` is required and a span of more than 1830 days (about five years)
-  is `422`. `limit` must be between 1 and 200 and `offset` must be `>= 0`; values
+  is `422`. `limit` must be between 1 and 1000 and `offset` must be `>= 0`; values
   outside those bounds are `422`, not clamped.
 - Where a date range is omitted, the effective range is the span of the owner's
   data within that endpoint's other filters, or empty when there is no data.
@@ -108,6 +108,24 @@ single definition:
 `rpe` is nullable (6.0–10.0 in 0.5 steps) and feeds none of these fields or any
 aggregate.
 
+## Filters
+
+`start`, `end`, `program`, `exercise`, `muscle` and `weighted` are accepted only
+where the schema lists them. `program`, `exercise` and `muscle` match exactly and
+`program` is the derived value described above, so `program=Push Day` matches
+`Push Day #1` and `Push Day #2`.
+
+An empty `program` is the same as omitting it, so a dashboard's All option can
+always send the parameter.
+
+`program` is available on `/summary`, `/sessions`, `/sets`, every `/series/*`
+endpoint, every `/breakdown/*` endpoint, `/yearly`, `/yearly/pace`,
+`/yearly/curve`, both `/exercises/{name}/*` endpoints, `/records/est-1rm` and
+`/records/bodyweight`. `start` and `end` are also accepted
+by the two record endpoints, so a record list can describe one period or one
+program instead of all history. Series `group_by` stays independent of the filter:
+filtering to one program and grouping by program returns that single group.
+
 ## Summary
 
 `GET /summary` returns `sessions` and `sets` (matching sessions and the sum of
@@ -139,6 +157,9 @@ zero-filled even if no sessions match it.
   `exercise` on `/series/volume`. Group values for `volume` come from set
   `volume_kg`; a set's muscle group is its exercise's `exercise_meta.muscle_group`,
   falling back to `Other`.
+- `program` filters every series endpoint (see Filters). Only matching sessions
+  and sets are counted and grouped, and the zero-filled buckets cover the
+  default range or the supplied `start`/`end`.
 
 ## Breakdowns
 
@@ -156,17 +177,27 @@ then `key` ascending.
 
 All numbers are rounded to two decimals.
 
+Every breakdown accepts the same `start`, `end` and `program` filters, so the
+breakdown can describe one program or one period. A weekday breakdown always
+returns all seven rows, zero-valued when the filter matches nothing.
+
 ## Exercise endpoints
 
 Exercise names may contain `/`; percent-encode it in the path and the route still
 resolves the full name.
 
-- `progress` groups by `session_date`, sorted by date ascending.
-  `best_est_1rm_kg` and `top_weight_kg` are `null` when the day has no weighted
-  sets.
+- `progress` groups by `session_date` by default, sorted by date ascending, or by
+  session when `group_by=session` is supplied, sorted by date then `session_id`.
+  `best_est_1rm_kg` and `top_weight_kg` are `null` when the group has no weighted
+  sets. `sets` counts the group's sets, and `session_id` is the session when
+  grouping by session and `null` otherwise, so two sessions on one day stay
+  separate rather than being summed into that day.
+- Both accept `start`, `end` and `program`, so one exercise's history can be
+  reported for one routine only.
 - `records` returns one row per distinct rep count, sorted by `reps` ascending.
   The row is the best set for that rep count, tie-broken by highest weight, then
-  highest `est_1rm_kg`, then most recent `set_time`.
+  highest `est_1rm_kg`, then most recent `set_time`; `set_count` is how many sets
+  were performed at that rep count in the filtered range.
 - `sets` is a paginated collection of set records (see Raw).
 
 ## Records
@@ -177,10 +208,14 @@ resolves the full name.
 - `bodyweight`: one row per exercise with at least one bodyweight (weight null)
   set, sorted by `reps` descending. The row is the set with the most reps,
   tie-broken by most recent `set_time`.
+- Both accept `start`, `end` and `program`; without them the row is the owner's
+  all-time best for that exercise.
 
 ## Yearly
 
 - `yearly` returns one row per year with data, sorted by year ascending.
+- Every yearly endpoint accepts `program`, so a yearly history can describe one
+  program.
 - `yearly/pace` compares `year` (default: the year of `as_of`) against the same
   point in the previous year:
 
@@ -200,6 +235,28 @@ from another year never compares a full year against a partial one. `elapsed_day
 includes the cutoff; `days_in_year` is 365 or 366; `remaining_weeks =
 (days_in_year - elapsed_days) / 7`. Projections and weekly needs are computed from
 unrounded totals; all numbers in the response are rounded to two decimals.
+
+`pace` accumulates whole years, so its rows carry no position inside the year.
+It counts the compared year up to `as_of`, so its last row is comparable with
+`ytd`.
+
+`GET /yearly/curve` is the within-year view and is requested separately, because
+it is the only response whose size depends on how many years are asked for:
+
+| Parameter | Meaning |
+| --- | --- |
+| `year` | Compared year; its rows stop at `as_of` (default: the year of `as_of`) |
+| `years` | Comma-separated years to include. Default: `year` and the three preceding years. At most 10, each at least 2 and no later than `year` |
+| `as_of` | Cutoff for the compared year, as on `/yearly/pace` |
+| `program` | Routine filter |
+
+`items` holds `{year, date, day_of_year, sessions, cumulative_sessions,
+cumulative_volume_kg}` for every calendar day of every requested year. Earlier
+years cover Jan 1 to Dec 31 and are zero-filled, so a requested year without
+sessions still appears as a zero line; a day without a session repeats the
+previous cumulative value. A chart drawn from `day_of_year` therefore compares
+years directly, while `date` remains the real date in that year. Ten years is the
+largest selection, which bounds the response at 3660 rows.
 
 ## Raw endpoints
 

@@ -3,7 +3,7 @@ from typing import Literal
 from ninja import Router
 
 from ..contract import envelope
-from ..params import OptBoolParam, OptDateParam, StrictQuery, validate_date_range
+from ..params import OptBoolParam, OptDateParam, OptFilterParam, StrictQuery, validate_date_range
 from ..queries import series_data
 from ..schemas import SeriesOut
 
@@ -13,11 +13,11 @@ Bucket = Literal["day", "week", "month", "year"]
 GroupBy = Literal["program", "muscle", "exercise"] | None
 
 
-def _build(request, metric, bucket, group_by, start, end, moving_average):
+def _build(request, metric, bucket, group_by, start, end, moving_average, program):
     validate_date_range(start, end)
     return {
         **envelope(),
-        **series_data(request.auth, metric, bucket, group_by, start, end, moving_average),
+        **series_data(request.auth, metric, bucket, group_by, start, end, moving_average, program),
     }
 
 
@@ -29,8 +29,9 @@ def series_sessions(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
+    program: OptFilterParam = StrictQuery(None),
 ):
-    return _build(request, "sessions", bucket, group_by, start, end, moving_average)
+    return _build(request, "sessions", bucket, group_by, start, end, moving_average, program)
 
 
 @router.get("/series/volume", response=SeriesOut, tags=["series"], summary="Volume time series")
@@ -41,8 +42,9 @@ def series_volume(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
+    program: OptFilterParam = StrictQuery(None),
 ):
-    return _build(request, "volume", bucket, group_by, start, end, moving_average)
+    return _build(request, "volume", bucket, group_by, start, end, moving_average, program)
 
 
 @router.get(
@@ -58,8 +60,11 @@ def series_volume_per_session(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
+    program: OptFilterParam = StrictQuery(None),
 ):
-    return _build(request, "volume-per-session", bucket, group_by, start, end, moving_average)
+    return _build(
+        request, "volume-per-session", bucket, group_by, start, end, moving_average, program
+    )
 
 
 @router.get(
@@ -72,5 +77,6 @@ def series_training_time(
     start: OptDateParam = StrictQuery(None),
     end: OptDateParam = StrictQuery(None),
     moving_average: OptBoolParam = StrictQuery(False),
+    program: OptFilterParam = StrictQuery(None),
 ):
-    return _build(request, "training-time", bucket, group_by, start, end, moving_average)
+    return _build(request, "training-time", bucket, group_by, start, end, moving_average, program)

@@ -75,6 +75,8 @@ class BreakdownOut(Envelope):
 
 class ProgressItem(Schema):
     date: str
+    session_id: int | None = None
+    sets: int
     best_est_1rm_kg: float | None
     top_weight_kg: float | None
     max_reps: int
@@ -88,6 +90,7 @@ class ProgressOut(Envelope):
 
 class ExerciseRecordItem(Schema):
     reps: int
+    set_count: int
     top_weight_kg: float | None
     best_est_1rm_kg: float | None
     volume_kg: float
@@ -168,6 +171,15 @@ class PaceRow(Schema):
     cumulative_volume_kg: float
 
 
+class PaceCurveRow(Schema):
+    year: int
+    date: str
+    day_of_year: int
+    sessions: int
+    cumulative_sessions: int
+    cumulative_volume_kg: float
+
+
 class PaceOut(Envelope):
     year: int
     ytd: PaceTotals
@@ -175,6 +187,13 @@ class PaceOut(Envelope):
     projected: PaceProjection
     needed_per_week: PaceNeeded
     pace: list[PaceRow]
+
+
+class CurveOut(Envelope):
+    year: int
+    years: list[int]
+    count: int
+    items: list[PaceCurveRow]
 
 
 class SetItem(Schema):

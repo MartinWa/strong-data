@@ -124,13 +124,10 @@ def test_exercise_names_with_slashes_are_reachable(client):
 @pytest.mark.parametrize(
     "path",
     [
-        "/records/est-1rm",
-        "/records/bodyweight",
         "/programs",
         "/exercises",
         "/muscle-groups",
         "/me",
-        "/yearly",
         "/healthz",
     ],
 )
@@ -198,22 +195,33 @@ def test_only_transient_database_errors_are_service_unavailable(auth, monkeypatc
 
 
 @pytest.mark.django_db
-def test_pace_reads_all_totals_in_one_transaction(auth):
+def test_pace_reads_its_totals_once_in_one_transaction(auth):
     with CaptureQueriesContext(connection) as captured:
         response = auth.get(BASE + "/yearly/pace?year=2026&as_of=2026-03-01")
 
     assert response.status_code == 200
     sql = [query["sql"].lower() for query in captured.captured_queries]
     reads = [i for i, query in enumerate(sql) if 'from "workouts_workoutsession"' in query]
-    assert len(reads) == 4
+    assert len(reads) == 1
+    assert "select" in sql[reads[0]]
+    assert "workouts_workoutsession" in sql[reads[0]]
     assert any(query.startswith("savepoint") and i < reads[0] for i, query in enumerate(sql))
-    assert not any(
-        query.startswith("release savepoint") and reads[0] < i < reads[-1]
-        for i, query in enumerate(sql)
-    )
     assert any(
-        query.startswith("release savepoint") and i > reads[-1] for i, query in enumerate(sql)
+        query.startswith("release savepoint") and i > reads[0] for i, query in enumerate(sql)
     )
+
+
+@pytest.mark.django_db
+def test_curve_reads_one_daily_aggregate(auth):
+    with CaptureQueriesContext(connection) as captured:
+        response = auth.get(BASE + "/yearly/curve?year=2026&as_of=2026-03-01&years=2025,2026")
+
+    assert response.status_code == 200
+    sql = [query["sql"].lower() for query in captured.captured_queries]
+    reads = [i for i, query in enumerate(sql) if 'from "workouts_workoutsession"' in query]
+    assert len(reads) == 1
+    assert "group by" in sql[reads[0]]
+    assert "count(" in sql[reads[0]]
 
 
 @pytest.mark.django_db
@@ -357,3 +365,27 @@ def test_disallowed_host_returns_the_json_error_envelope(client):
     body = response.json()
     assert body["contract_version"] == "1.0"
     assert body["error"]["code"] == "bad_request"
+
+
+@pytest.mark.django_db
+def test_curve_reads_only_the_requested_years(client):
+    csv_text = (
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2010-03-01 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
+        "2026-01-05 09:00:00,Push Day #1,60m,Bench Press (Barbell),1,80,5,0,0,\n"
+    )
+    user = make_token_user(client, "curveyears", "curveyears-secret")
+    import_workouts_csv(user, csv_text)
+
+    with CaptureQueriesContext(connection) as captured:
+        response = client.get(BASE + "/yearly/curve?year=2026&as_of=2026-02-01&years=2010,2026")
+
+    assert response.status_code == 200
+    sql = [query["sql"].lower() for query in captured.captured_queries]
+    reads = [query for query in sql if 'from "workouts_workoutsession"' in query]
+    assert len(reads) == 1
+    assert "2010-01-01" in reads[0]
+    assert "2010-12-31" in reads[0]
+    assert "2026-01-01" in reads[0]
+    assert "2026-02-01" in reads[0]
+    assert "select distinct" in reads[0] or "count(" in reads[0]
