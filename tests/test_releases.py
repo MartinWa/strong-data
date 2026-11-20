@@ -6,6 +6,7 @@ from django.core.cache import cache
 from django.urls import reverse
 
 from strong_data import releases
+from tools import publish_release
 
 
 @pytest.fixture(autouse=True)
@@ -45,6 +46,83 @@ def release_payload(tag, *, draft=False, prerelease=False):
 )
 def test_version_number_accepts_only_stable_tags(value, expected):
     assert releases.version_number(value) == expected
+
+
+class FakeClock:
+    def __init__(self, *values):
+        self.values = list(values)
+
+    def __call__(self):
+        return self.values.pop(0)
+
+
+def test_wait_for_ci_run_returns_when_ci_concludes(monkeypatch):
+    runs = [
+        {"conclusion": None},
+        {"conclusion": None},
+        {"conclusion": "success"},
+    ]
+    monkeypatch.setattr(publish_release, "read_ci_run", lambda commit: runs.pop(0))
+    slept = []
+
+    run = publish_release.wait_for_ci_run(
+        "abc",
+        wait_seconds=60,
+        poll_seconds=5,
+        sleep=slept.append,
+        monotonic=FakeClock(0, 5, 10),
+    )
+
+    assert run == {"conclusion": "success"}
+    assert slept == [5, 5]
+
+
+def test_wait_for_ci_run_gives_up_at_the_deadline(monkeypatch):
+    monkeypatch.setattr(publish_release, "read_ci_run", lambda commit: {"conclusion": None})
+    slept = []
+
+    run = publish_release.wait_for_ci_run(
+        "abc",
+        wait_seconds=60,
+        poll_seconds=5,
+        sleep=slept.append,
+        monotonic=FakeClock(0, 60),
+    )
+
+    assert run == {"conclusion": None}
+    assert slept == []
+
+
+def test_wait_for_ci_run_tolerates_a_run_that_does_not_exist_yet(monkeypatch):
+    runs = [None, {"conclusion": "success"}]
+    monkeypatch.setattr(publish_release, "read_ci_run", lambda commit: runs.pop(0))
+
+    run = publish_release.wait_for_ci_run(
+        "abc",
+        wait_seconds=60,
+        poll_seconds=5,
+        sleep=lambda seconds: None,
+        monotonic=FakeClock(0, 5),
+    )
+
+    assert run == {"conclusion": "success"}
+
+
+def test_validate_source_rejects_ci_that_did_not_pass(monkeypatch):
+    monkeypatch.setattr(publish_release, "read_command", lambda *arguments: "abc123")
+    monkeypatch.setattr(
+        publish_release,
+        "wait_for_ci_run",
+        lambda commit: {
+            "conclusion": "failure",
+            "headSha": "abc123",
+            "headBranch": "main",
+            "event": "push",
+        },
+    )
+
+    with pytest.raises(ValueError, match="successful CI push run on main"):
+        publish_release.validate_source("1.0.0", event_name="push", tag_created="true")
 
 
 def test_update_available_is_none_when_the_check_is_disabled(settings, monkeypatch):
