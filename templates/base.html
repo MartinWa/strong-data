@@ -54,6 +54,7 @@
       {% if user.is_authenticated %}
       <span class="footer-links">
         <a href="{{ api_docs_url }}">API reference</a>
+        {% if user.is_staff %}<a href="{% url 'admin:index' %}">Admin</a>{% endif %}
       </span>
       {% endif %}
     </div>
