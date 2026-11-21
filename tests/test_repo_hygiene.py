@@ -29,7 +29,7 @@ def test_rejects_private_data_files():
         "archive.zip",
         "secrets.env",
         ".env.local",
-        "planning/PLAN.md",
+        "planning/data-model.md",
         "reference/init.sql",
     ]
     assert find_violations(paths) == sorted(paths)

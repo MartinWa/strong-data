@@ -4,11 +4,11 @@ Instructions for automated agents working in this repository.
 
 ## Ground rules
 
-- Follow `planning/PLAN.md` phase by phase. Do not implement later-phase behavior
-  while working on an earlier phase.
+- `README.md` and `docs/` are the source of truth for behavior. Keep them in sync
+  with any change; the phased plan is retired.
 - `planning/` and `reference/` are private and gitignored. Never commit their
   contents, and never read `reference/strong_workouts.csv` except through the
-  opt-in `STRONG_LOCAL_CSV` parity check described in the plan.
+  opt-in `STRONG_LOCAL_CSV` parity check described in `docs/development.md`.
 - Never commit CSV, database, backup, `.env`, token or other personal-data files.
   All examples and fixtures must be wholly synthetic.
 - Use Django migrations, never hand-edited schemas.
@@ -54,7 +54,7 @@ docker run --rm --network none --read-only --cap-drop ALL \
   container, plus dependency and production-image auditing
 - `.github/workflows/release.yml` — tag-based image publishing with attestations
 
-## Definition of done for a phase
+## Definition of done for a change
 
 `uv run pytest -q`, `ruff check`, `ruff format --check` and the hygiene guard all
 pass in the Linux development container, the production image passes
