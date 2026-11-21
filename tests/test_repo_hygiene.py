@@ -190,6 +190,15 @@ def test_production_entrypoint_starts_the_pending_sweeper():
     assert "pending.start_sweeper(settings.PENDING_SWEEP_SECONDS)" in text
 
 
+def test_production_body_cap_probe_derives_from_the_configured_cap():
+    text = (REPO_ROOT / "tools/check_production.py").read_text(encoding="utf-8")
+
+    assert "max_request_body_size=MAX_REQUEST_BODY_BYTES" in (
+        REPO_ROOT / "tools/serve.py"
+    ).read_text(encoding="utf-8")
+    assert "OVERSIZED_BODY_BYTES = MAX_REQUEST_BODY_BYTES + 1" in text
+
+
 def test_development_compose_needs_no_env_file():
     text = (REPO_ROOT / "compose.development.yaml").read_text(encoding="utf-8")
 

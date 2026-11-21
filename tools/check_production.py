@@ -14,6 +14,9 @@ import urllib.request
 from pathlib import Path
 
 from strong_data.version import app_version
+from workouts.limits import MAX_REQUEST_BODY_BYTES, MAX_UPLOAD_BYTES
+
+OVERSIZED_BODY_BYTES = MAX_REQUEST_BODY_BYTES + 1
 
 
 def free_port():
@@ -34,8 +37,8 @@ def request(port, path, token=None):
         return error.code, error.headers
 
 
-def request_with_declared_body(port, size):
-    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+def request_with_declared_body(port, size, timeout=10):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     try:
         connection.putrequest("POST", "/upload/")
         connection.putheader("Content-Length", str(size))
@@ -44,6 +47,32 @@ def request_with_declared_body(port, size):
         return connection.getresponse().status
     finally:
         connection.close()
+
+
+def request_with_body(port, size):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=30)
+    try:
+        connection.putrequest("POST", "/upload/")
+        connection.putheader("Content-Length", str(size))
+        connection.putheader("Content-Type", "multipart/form-data; boundary=synthetic")
+        connection.endheaders()
+        connection.send(b"\0" * size)
+        return connection.getresponse().status
+    finally:
+        connection.close()
+
+
+def verify_request_body_cap(port):
+    try:
+        oversized = request_with_declared_body(port, OVERSIZED_BODY_BYTES, timeout=5)
+    except OSError as error:
+        raise AssertionError(
+            f"A declared {OVERSIZED_BODY_BYTES} byte body was not rejected: {error}"
+        ) from error
+    assert oversized == 413, oversized
+
+    accepted = request_with_body(port, MAX_UPLOAD_BYTES)
+    assert accepted in {302, 403}, accepted
 
 
 def wait_until_healthy(port, attempts=120):
@@ -94,8 +123,7 @@ def verify_serving(database):
         assert status == 401, status
         status, _ = request(port, "/")
         assert status in (200, 301, 302), status
-        status = request_with_declared_body(port, 1024 * 1024 * 1024)
-        assert status == 413, status
+        verify_request_body_cap(port)
     finally:
         child.terminate()
         child.wait(timeout=30)

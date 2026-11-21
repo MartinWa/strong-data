@@ -7,11 +7,10 @@ from waitress import serve
 
 from strong_data.wsgi import application
 from workouts import pending
-from workouts.views import MAX_UPLOAD_BYTES, MULTIPART_OVERHEAD_BYTES
+from workouts.limits import MAX_REQUEST_BODY_BYTES
 
 TRUSTED_PROXY = os.environ.get("STRONG_TRUSTED_PROXY", "").strip() or None
 PORT = int(os.environ.get("STRONG_PORT", "8000"))
-MAX_REQUEST_BODY_BYTES = MAX_UPLOAD_BYTES + MULTIPART_OVERHEAD_BYTES
 
 if TRUSTED_PROXY is None:
     raise SystemExit(
