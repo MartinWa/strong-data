@@ -3,6 +3,7 @@ import hmac
 import secrets
 import time
 from datetime import date
+from urllib.parse import urlencode
 
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
@@ -275,11 +276,20 @@ def _custom_groups(user):
     ]
 
 
+def _muscles_url(number, query):
+    params = {"page": number}
+    if query:
+        params["q"] = query
+    return f"{reverse('muscles')}?{urlencode(params)}"
+
+
 @login_required
 def muscles(request):
     options = muscle_group_options(request.user)
     owned = ExerciseMeta.objects.filter(owner=request.user)
-    page = Paginator(owned, MUSCLES_PAGE_SIZE).get_page(
+    query = (request.POST.get("q") or request.GET.get("q", "")).strip()
+    matching = owned.filter(exercise_name__icontains=query) if query else owned
+    page = Paginator(matching, MUSCLES_PAGE_SIZE).get_page(
         request.POST.get("page") or request.GET.get("page")
     )
     formset = ExerciseMetaFormSet(
@@ -292,7 +302,7 @@ def muscles(request):
         changed = [form for form in formset.forms if form.has_changed()]
         formset.save()
         messages.success(request, _muscle_change_message(changed))
-        return redirect(f"{reverse('muscles')}?page={page.number}")
+        return redirect(_muscles_url(page.number, query))
     return render(
         request,
         "workouts/muscles.html",
@@ -300,6 +310,7 @@ def muscles(request):
             "formset": formset,
             "page": page,
             "count": owned.count(),
+            "query": query,
             "custom_groups": _custom_groups(request.user),
         },
     )

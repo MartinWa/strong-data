@@ -4,6 +4,7 @@
 {% block scripts %}
 <script src="{% asset 'workouts/filters.js' %}" defer></script>
 <script src="{% asset 'workouts/delete.js' %}" defer></script>
+<script src="{% asset 'workouts/print.js' %}" defer></script>
 {% endblock %}
 {% block content %}
 <div class="page-head">
@@ -48,9 +49,11 @@
 {% if not page.paginator.count %}
 <div class="empty">
   {% if has_data %}
+  <svg class="empty-icon" width="38" height="38" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
   <p>No sessions match these filters.</p>
   <a class="btn" href="{% url 'sessions' %}">Clear filters</a>
   {% else %}
+  <svg class="empty-icon" width="38" height="38" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 9.5v5M6.5 7v10M17.5 7v10M21 9.5v5M6.5 12h11"/></svg>
   <p>No sessions yet.</p>
   <p class="small">Your imported workouts appear here, newest first.</p>
   <a class="btn btn-primary" href="{% url 'upload' %}">Upload CSV export</a>
@@ -59,7 +62,7 @@
 {% endif %}
 
 {% for session in page %}
-<details class="card session">
+<details class="card session" data-print-open>
   <summary class="session-head">
     <span class="session-heading">
       <span class="session-date"><time datetime="{{ session.session_date|isodate }}">{{ session.session_date|isodate }}</time></span>
@@ -113,19 +116,7 @@
 {% endfor %}
 
 {% if page.has_other_pages %}
-<nav class="pager" aria-label="Pagination">
-  {% if page.has_previous %}
-  <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}">Previous</a>
-  {% else %}
-  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Previous</a>
-  {% endif %}
-  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-  {% if page.has_next %}
-  <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}">Next</a>
-  {% else %}
-  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Next</a>
-  {% endif %}
-</nav>
+{% include "partials/pager.html" %}
 {% endif %}
 
 {% if total_sessions %}

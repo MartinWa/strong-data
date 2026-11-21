@@ -1,5 +1,5 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
   --bg: #f5f6f8;
   --surface: #ffffff;
   --surface-2: #eef1f5;
@@ -27,7 +27,8 @@
 }
 
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root:not([data-theme="light"]) {
+    color-scheme: dark;
     --bg: #12151a;
     --surface: #1a1e24;
     --surface-2: #232931;
@@ -48,6 +49,29 @@
     --shadow: none;
     --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa6b4' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
   }
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #12151a;
+  --surface: #1a1e24;
+  --surface-2: #232931;
+  --border: #2c333c;
+  --border-strong: #3b444f;
+  --text: #e7ebf0;
+  --muted: #9aa6b4;
+  --accent: #7ea6f8;
+  --accent-hover: #9dbcfb;
+  --accent-soft: #1e2a42;
+  --accent-contrast: #0e1218;
+  --danger: #f4b3ae;
+  --danger-soft: #3a1f1d;
+  --success: #86e0ae;
+  --success-soft: #16301f;
+  --warning: #f0c674;
+  --warning-soft: #33280f;
+  --shadow: none;
+  --chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%239aa6b4' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E");
 }
 
 *,
@@ -230,6 +254,54 @@ pre code {
 
 .logout {
   margin: 0;
+}
+
+.header-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-left: auto;
+}
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.3rem;
+  height: 2.3rem;
+  padding: 0;
+  color: var(--muted);
+  background: transparent;
+  border: 0;
+  border-radius: 999px;
+  cursor: pointer;
+}
+
+.theme-toggle:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+
+.theme-toggle .icon {
+  width: 1.15rem;
+  height: 1.15rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.theme-icon-moon {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-icon-sun {
+  display: none;
+}
+
+:root[data-theme="dark"] .theme-icon-moon {
+  display: block;
 }
 
 main.container {
@@ -418,6 +490,15 @@ main.container {
 
 .is-dirty .btn.muscle-save {
   visibility: visible;
+}
+
+[data-muscle-row].is-dirty > td {
+  background: var(--accent-soft);
+}
+
+[data-muscle-row].is-dirty > td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+  font-weight: 550;
 }
 
 .card {
@@ -724,6 +805,29 @@ input[type="file"]::file-selector-button:hover {
   border-color: var(--danger);
 }
 
+.dropzone {
+  padding: 1.1rem 1.1rem 0.4rem;
+  border: 2px dashed var(--border-strong);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+
+.dropzone.is-dragging {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.dropzone .field {
+  margin-bottom: 0.7rem;
+}
+
+.dropzone-hint {
+  margin: 0 0 0.7rem;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+
 .btn {
   display: inline-flex;
   align-items: center;
@@ -990,6 +1094,19 @@ input[type="file"]::file-selector-button:hover {
   margin: 0 0 0.75rem;
 }
 
+.empty-icon {
+  display: block;
+  width: 2.4rem;
+  height: 2.4rem;
+  margin: 0 auto 0.8rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+
 .filters {
   --control-height: 2.6rem;
   display: flex;
@@ -1122,6 +1239,7 @@ input[type="file"]::file-selector-button:hover {
   align-items: center;
   justify-content: center;
   gap: 0.75rem;
+  flex-wrap: wrap;
   margin-top: 1.5rem;
   font-size: 0.88rem;
   color: var(--muted);
@@ -1130,6 +1248,40 @@ input[type="file"]::file-selector-button:hover {
 .pager a[aria-disabled="true"] {
   opacity: 0.45;
   cursor: default;
+}
+
+.pager-pages {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+}
+
+.pager-page {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 2rem;
+  height: 2rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+a.pager-page:hover {
+  background: var(--surface-2);
+  color: var(--text);
+  text-decoration: none;
+}
+
+.pager-page.is-current {
+  background: var(--accent-soft);
+  color: var(--accent);
+  font-weight: 650;
+}
+
+.pager-gap {
+  padding: 0 0.1rem;
 }
 
 .session .table th,
@@ -1555,10 +1707,41 @@ input[type="file"]::file-selector-button:hover {
 }
 
 @media print {
+  :root,
+  :root[data-theme="dark"] {
+    color-scheme: light;
+    --bg: #fff;
+    --surface: #fff;
+    --surface-2: #fff;
+    --border: #ccc;
+    --border-strong: #999;
+    --text: #000;
+    --muted: #333;
+    --accent: #1a3f96;
+    --accent-soft: #fff;
+    --danger: #8a1a14;
+    --danger-soft: #fff;
+    --success: #14532d;
+    --success-soft: #fff;
+    --warning: #6b4600;
+    --warning-soft: #fff;
+    --shadow: none;
+    --chevron: none;
+  }
+
+  @page {
+    margin: 12mm;
+  }
+
   .site-header,
   .site-footer,
   .actions,
-  .pager {
+  .filters,
+  .pager,
+  .danger-zone,
+  .messages,
+  .skip-link,
+  .theme-toggle {
     display: none;
   }
 
@@ -1566,13 +1749,59 @@ input[type="file"]::file-selector-button:hover {
     background: #fff;
   }
 
+  main.container {
+    padding: 0;
+  }
+
   .card,
-  .table-wrap {
+  .table-wrap,
+  .empty {
     box-shadow: none;
     border-color: #ccc;
   }
 
   .action-bar {
     position: static;
+  }
+
+  .table-wrap {
+    overflow: visible;
+  }
+
+  .table {
+    font-size: 0.72rem;
+  }
+
+  .table th,
+  .table td {
+    padding: 0.15rem 0.3rem;
+    border-color: #ccc;
+    white-space: normal;
+  }
+
+  .table thead {
+    display: table-header-group;
+  }
+
+  .table tr {
+    break-inside: avoid;
+  }
+
+  .session {
+    border-color: #ccc;
+    break-inside: auto;
+  }
+
+  .session > .session-head {
+    padding: 0.4rem 0.2rem;
+    cursor: default;
+  }
+
+  .session > .session-head::before {
+    display: none;
+  }
+
+  .badge {
+    border-color: #ccc;
   }
 }

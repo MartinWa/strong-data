@@ -2,6 +2,7 @@
 {% load assets %}
 {% block title %}Muscles — strong-data{% endblock %}
 {% block scripts %}
+<script src="{% asset 'workouts/filters.js' %}" defer></script>
 <script src="{% asset 'workouts/muscles.js' %}" defer></script>
 <script src="{% asset 'workouts/delete.js' %}" defer></script>
 {% endblock %}
@@ -17,6 +18,7 @@
 
 {% if not count %}
 <div class="empty">
+  <svg class="empty-icon" width="38" height="38" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M4 6.5h16M4 12h16M4 17.5h9"/></svg>
   <p>No exercises imported yet.</p>
   <a class="btn btn-primary" href="{% url 'upload' %}">Upload a CSV export</a>
 </div>
@@ -32,10 +34,28 @@
     .btn.muscle-save { visibility: visible; }
   </style>
 </noscript>
+<form class="filters" method="get" action="{% url 'muscles' %}" role="search" aria-label="Filter exercises" data-filter-form>
+  <div class="filters-field filters-search">
+    <label for="muscle-q">Search</label>
+    <input id="muscle-q" type="search" name="q" value="{{ query }}" placeholder="Exercise name">
+  </div>
+  <div class="filters-actions">
+    <button class="btn btn-primary btn-sm" type="submit">Filter</button>
+    <a class="btn btn-sm" href="{% url 'muscles' %}">Clear</a>
+  </div>
+</form>
+{% if not page.paginator.count %}
+<div class="empty">
+  <svg class="empty-icon" width="38" height="38" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="M16 16l4.5 4.5"/></svg>
+  <p>No exercises match “{{ query }}”.</p>
+  <a class="btn" href="{% url 'muscles' %}">Clear filter</a>
+</div>
+{% else %}
 <form method="post" data-muscle-form>
   {% csrf_token %}
   {{ formset.management_form }}
   <input type="hidden" name="page" value="{{ page.number }}">
+  <input type="hidden" name="q" value="{{ query }}">
   <div class="card">
     <div class="card-head">
       <h2>Exercises <span class="badge">{{ count }}</span></h2>
@@ -88,21 +108,10 @@
     </div>
   </div>
 </form>
+{% endif %}
 
-{% if page.paginator.num_pages > 1 %}
-<nav class="pager" aria-label="Pagination">
-  {% if page.has_previous %}
-  <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}">Previous</a>
-  {% else %}
-  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Previous</a>
-  {% endif %}
-  <span>Page {{ page.number }} of {{ page.paginator.num_pages }}</span>
-  {% if page.has_next %}
-  <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}">Next</a>
-  {% else %}
-  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Next</a>
-  {% endif %}
-</nav>
+{% if page.has_other_pages %}
+{% include "partials/pager.html" %}
 {% endif %}
 
 {% if custom_groups %}

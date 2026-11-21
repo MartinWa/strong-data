@@ -17,11 +17,14 @@ if (muscleForm) {
   }
 
   function refreshSave() {
-    const dirty = rows.some(function (row) {
+    let dirty = false;
+    rows.forEach(function (row) {
       const select = row.querySelector(".muscle-select");
       const input = row.querySelector(".muscle-custom");
       const value = row.classList.contains("is-custom") ? input.value : select.value;
-      return value !== select.dataset.initial;
+      const rowDirty = value !== select.dataset.initial;
+      row.classList.toggle("is-dirty", rowDirty);
+      dirty = dirty || rowDirty;
     });
     muscleForm.classList.toggle("is-dirty", dirty);
   }
