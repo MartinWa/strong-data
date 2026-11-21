@@ -67,9 +67,9 @@ document.querySelectorAll("[data-upload-form]").forEach(function (form) {
   });
 
   dropzone.addEventListener("drop", function (event) {
-    event.preventDefault();
     dropzone.classList.remove("is-dragging");
     if (event.target.closest('input[type="file"]')) return;
+    event.preventDefault();
     drop(event.dataTransfer && event.dataTransfer.files);
   });
 });

@@ -319,3 +319,16 @@ def test_the_dropzone_reuses_the_input_and_its_size_check():
     assert 'dispatchEvent(new Event("change", { bubbles: true }))' in script
     assert "form.requestSubmit()" in script
     assert "is-dragging" in script
+
+
+def test_the_dropzone_lets_a_drop_on_the_picker_keep_its_native_handling():
+    from pathlib import Path
+
+    from django.contrib.staticfiles import finders
+
+    script = Path(finders.find("workouts/upload.js")).read_text(encoding="utf-8")
+    handler = script[script.index('dropzone.addEventListener("drop"') :]
+    handler = handler[: handler.index("});")]
+
+    assert handler.index('input[type="file"]') < handler.index("event.preventDefault()")
+    assert handler.index("is-dragging") < handler.index("event.preventDefault()")
