@@ -316,19 +316,28 @@ def test_the_dropzone_reuses_the_input_and_its_size_check():
     script = Path(finders.find("workouts/upload.js")).read_text(encoding="utf-8")
 
     assert "input.files = transfer.files" in script
-    assert 'dispatchEvent(new Event("change", { bubbles: true }))' in script
+    assert 'input.dispatchEvent(new Event("change", { bubbles: true }))' in script
     assert "form.requestSubmit()" in script
     assert "is-dragging" in script
 
 
-def test_the_dropzone_lets_a_drop_on_the_picker_keep_its_native_handling():
+def listener_body(script, anchor):
+    start = script.index(anchor)
+    return script[start : script.index("\n  });", start)]
+
+
+def test_every_drop_on_the_dropzone_takes_the_shared_path():
     from pathlib import Path
 
     from django.contrib.staticfiles import finders
 
     script = Path(finders.find("workouts/upload.js")).read_text(encoding="utf-8")
-    handler = script[script.index('dropzone.addEventListener("drop"') :]
-    handler = handler[: handler.index("});")]
+    entering = listener_body(script, '["dragenter", "dragover"].forEach')
+    dropped = listener_body(script, 'dropzone.addEventListener("drop"')
 
-    assert handler.index('input[type="file"]') < handler.index("event.preventDefault()")
-    assert handler.index("is-dragging") < handler.index("event.preventDefault()")
+    for body in (entering, dropped):
+        assert 'input[type="file"]' not in body
+        assert "if (!canHandle(event)) return;" in body
+        assert "event.preventDefault()" in body
+
+    assert "drop(event.dataTransfer.files)" in dropped
