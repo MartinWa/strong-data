@@ -21,17 +21,25 @@ records, muscle-group corrections and a token-authenticated API.
 
 ## What it looks like
 
+**Importing** is always two steps. The preview lists the sessions in the file and a
+sample of their sets, and flags every row that would be skipped or blanked together
+with the reason — so a bad export is caught before it replaces anything.
+
+![The import preview: the sessions in the file and a sample of their sets](docs/images/import-preview.png)
+
 **Sessions** are the home page: newest first, one row per workout, opened to its
 sets with weight, reps, RPE, volume and estimated 1RM, grouped per exercise. Text,
 program and date filters narrow the list.
 
 ![The sessions page: a legs workout expanded into one table per exercise](docs/images/sessions.png)
 
-**Importing** is always two steps. The preview lists the sessions in the file, a
-sample of their sets, and every row that would be skipped or blanked together with
-the reason — so a bad export is caught before it replaces anything.
+**The API** reads the same data back. Create a named token on `/tokens/`, copy the
+secret it shows once, and send it as a bearer token; the generated reference at
+`/api/v1/docs` documents every endpoint, its parameters and its response schemas.
 
-![The import preview: five warnings grouped by cause above the sessions in the file](docs/images/import-preview.png)
+![The tokens page: named tokens with prefix, creation date, expiry and status](docs/images/tokens.png)
+
+![The API reference at /api/v1/docs: endpoints grouped by tag, with parameters and response schemas](docs/images/api-docs.png)
 
 ## Quick start
 

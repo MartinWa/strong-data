@@ -34,7 +34,7 @@ upload page repeats these steps where you need them.
 4. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 per page.
    Open a row to see its sets.
 
-![The preview page: warnings grouped by cause, the sessions in the file and the replace notice](images/import-preview.png)
+![The preview page: the sessions in the file and a sample of their sets, before anything is written](images/import-preview.png)
 
 ### Confirming replaces your previous data
 
@@ -72,6 +72,8 @@ line numbers affected. A `Weight` of `0` is bodyweight, exactly like an empty
 `Weight`: no weight is stored, it adds no volume, and it appears in bodyweight
 records.
 
+![The preview with five warnings grouped by cause above the sessions in the file](images/import-warnings.png)
+
 ## Sessions
 
 `/sessions/` lists your sessions newest first with date, workout, program and
@@ -104,7 +106,7 @@ Each new exercise name gets a guessed muscle group at import. Correct guesses on
 `/muscles/`: a correction applies to that exercise name for your account and is
 preserved by later imports.
 
-![The muscles page: one row per exercise with the guessed or corrected muscle group](images/muscles.png)
+![The muscles page: one row per exercise with the guessed or corrected muscle group, and a search box](images/muscles.png)
 
 The page lists 100 names at a time; edit the rows you want and choose *Save all*,
 which appears once anything differs from what is stored and saves the rows on that
@@ -128,6 +130,8 @@ The API is read-only and authenticated with a bearer token, created on `/tokens/
 give it a name, copy the secret when it is shown (it is displayed once) and
 optionally set an expiry. Revoke a token at any time; revocation takes effect on
 the next request.
+
+![The tokens page: named tokens with prefix, creation date, expiry and status](images/tokens.png)
 
 ```sh
 curl -fsS -H "Authorization: Bearer <secret>" \
