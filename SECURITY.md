@@ -2,10 +2,13 @@
 
 ## Reporting a vulnerability
 
-Use GitHub's private vulnerability reporting ("Report a vulnerability" on the
-Security tab). Do not open a public issue for a security problem. Include the
-affected version, the impact and a minimal reproduction. Fixes are coordinated
-privately before disclosure.
+Report vulnerabilities privately through GitHub advisory reporting:
+
+<https://github.com/MartinWa/strong-data/security/advisories/new>
+
+Do not open a public issue for a security problem. Include the affected version,
+the impact and a minimal reproduction. Reports are acknowledged within 7 days;
+fixes are coordinated privately and the advisory is published after disclosure.
 
 ## Personal data
 
