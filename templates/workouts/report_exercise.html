@@ -1,0 +1,104 @@
+{% extends "base.html" %}
+{% load assets formatting %}
+{% block title %}{{ exercise }} — Reports — strong-data{% endblock %}
+{% block scripts %}
+<script src="{% asset 'workouts/filters.js' %}" defer></script>
+<script src="{% asset 'workouts/print.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<div class="page-head report-head">
+  <p class="report-back"><a href="{{ reports_url }}">← Reports</a></p>
+  <h1>{{ exercise }}</h1>
+  <p class="lede">{{ period_label }} · {{ metric_label }}</p>
+</div>
+
+<form class="report-toolbar filters" method="get" action="{% url 'report_exercise' name=exercise %}" data-filter-form>
+  <div class="report-toolbar-range">
+    <span class="segmented" role="group" aria-label="Date range">
+      {% for option in range_options %}
+      <a class="segmented-item{% if option.current %} is-current{% endif %}" href="{% querystring range=option.key %}"{% if option.current %} aria-current="true"{% endif %}>{{ option.label }}</a>
+      {% endfor %}
+    </span>
+  </div>
+  <div class="filters-field">
+    <label for="report-program">Program</label>
+    <select id="report-program" name="program">
+      <option value="">All programs</option>
+      {% for item in programs %}
+      <option value="{{ item }}"{% if item == selected_program %} selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <input type="hidden" name="range" value="{{ range_key }}">
+  <input type="hidden" name="metric" value="{{ metric }}">
+  {% if requested_year %}<input type="hidden" name="year" value="{{ requested_year }}">{% endif %}
+  <div class="filters-actions">
+    <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+  </div>
+</form>
+
+{% if not has_points %}
+<div class="notice report-notice">
+  <p>No sets for {{ exercise }} in {{ period_label }}.</p>
+</div>
+{% else %}
+<section class="card report-card">
+  <div class="card-head"><h2>{{ metric_label }}</h2></div>
+  <div class="chart-wrap">
+    {% include "workouts/partials/report_chart.html" with chart=chart %}
+  </div>
+  <details class="data-table" data-print-open>
+    <summary>Show the numbers</summary>
+    <div class="table-wrap">
+      <table class="table">
+        <caption class="visually-hidden">Best set per session for {{ exercise }}</caption>
+        <thead>
+          <tr>
+            <th scope="col">Date</th>
+            <th scope="col" class="num">Sets</th>
+            <th scope="col" class="num">Est. 1RM</th>
+            <th scope="col" class="num">Top weight</th>
+            <th scope="col" class="num">Max reps</th>
+            <th scope="col" class="num">Volume</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in table_rows %}
+          <tr><td>{{ row.date }}</td><td class="num">{{ row.sets }}</td><td class="num">{{ row.estimate }}</td><td class="num">{{ row.top_weight }}</td><td class="num">{{ row.reps }}</td><td class="num">{{ row.volume }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+{% endif %}
+
+<section class="card report-card">
+  <div class="card-head"><h2>Records by reps</h2></div>
+  <p class="muted small">The best set at each rep count in this period, not the most recent set.</p>
+  {% if record_rows %}
+  <div class="table-wrap">
+    <table class="table">
+      <caption class="visually-hidden">Best set per rep count for {{ exercise }}</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="num">Reps</th>
+          <th scope="col" class="num">Sets</th>
+          <th scope="col" class="num">Top weight</th>
+          <th scope="col" class="num">Est. 1RM</th>
+          <th scope="col" class="num">Volume</th>
+          <th scope="col">Set time</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for row in record_rows %}
+        <tr><td class="num">{{ row.reps }}</td><td class="num">{{ row.set_count }}</td><td class="num">{{ row.top_weight }}</td><td class="num">{{ row.estimate }}</td><td class="num">{{ row.volume }}</td><td>{{ row.set_time|isominute }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+  {% else %}
+  <p class="muted">No sets for {{ exercise }} in this period.</p>
+  {% endif %}
+</section>
+{% endblock %}

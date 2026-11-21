@@ -11,6 +11,7 @@ from django.core.paginator import Paginator
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Q
 from django.forms import modelformset_factory
+from django.http import Http404
 from django.shortcuts import redirect, render
 from django.urls import reverse
 from django.utils import timezone
@@ -29,6 +30,7 @@ from .forms import (
 )
 from .limits import MAX_UPLOAD_BYTES, MULTIPART_OVERHEAD_BYTES
 from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
+from .reports import build_exercise_report, build_report
 from .services import EmptyImportError, import_workouts_csv
 
 MUSCLES_PAGE_SIZE = 100
@@ -218,6 +220,20 @@ def sessions(request):
             "date_to": date_to.isoformat() if date_to else "",
         },
     )
+
+
+@login_required
+def reports(request):
+    context = build_report(request.user, request.GET, timezone.localdate())
+    return render(request, "workouts/reports.html", context)
+
+
+@login_required
+def report_exercise(request, name):
+    context = build_exercise_report(request.user, name, request.GET, timezone.localdate())
+    if context is None:
+        raise Http404
+    return render(request, "workouts/report_exercise.html", context)
 
 
 @login_required

@@ -1,0 +1,31 @@
+<svg class="chart chart-{{ chart.kind }}" viewBox="0 0 {{ chart.width }} {{ chart.height }}" role="img" aria-label="{{ chart.aria_label }}" preserveAspectRatio="xMidYMid meet">
+  <g class="chart-grid" aria-hidden="true">
+    {% for tick in chart.ticks %}
+    <line class="chart-gridline" x1="{{ chart.left }}" y1="{{ tick.y }}" x2="{{ chart.right_edge }}" y2="{{ tick.y }}"></line>
+    <text class="chart-tick" x="{{ chart.left }}" y="{{ tick.y }}" dx="-8" dy="4" text-anchor="end">{{ tick.label }}</text>
+    {% endfor %}
+    {% for label in chart.xlabels %}
+    <text class="chart-tick chart-tick-x" x="{{ label.x }}" y="{{ chart.plot_bottom }}" dy="20" text-anchor="middle">{{ label.label }}</text>
+    {% endfor %}
+  </g>
+  {% if chart.kind == "bars" %}
+  <g class="chart-bars">
+    {% for bar in chart.bars %}
+    <rect class="chart-bar{% if bar.partial %} bar-partial{% endif %}" x="{{ bar.x }}" y="{{ bar.y }}" width="{{ bar.width }}" height="{{ bar.height }}" rx="2">
+      <title>{{ bar.title }}</title>
+    </rect>
+    {% endfor %}
+  </g>
+  {% if chart.has_line %}
+  <polyline class="chart-line series-1" points="{{ chart.line }}" fill="none"></polyline>
+  {% endif %}
+  {% else %}
+  <g class="chart-lines">
+    {% for line in chart.lines %}
+    <polyline class="chart-line {{ line.class }}" points="{{ line.points }}" fill="none"></polyline>
+    {% for dot in line.dots %}<circle class="chart-dot {{ line.class }}" cx="{{ dot.x }}" cy="{{ dot.y }}" r="3"></circle>{% endfor %}
+    {% endfor %}
+  </g>
+  {% endif %}
+  <line class="chart-axis" x1="{{ chart.left }}" y1="{{ chart.plot_bottom }}" x2="{{ chart.right_edge }}" y2="{{ chart.plot_bottom }}" aria-hidden="true"></line>
+</svg>

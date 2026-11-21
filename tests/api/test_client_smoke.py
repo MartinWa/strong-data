@@ -95,6 +95,7 @@ def test_consumer_can_discover_and_page_through_data(client):
         "/breakdown/exercises",
         "/records/est-1rm",
         "/records/bodyweight",
+        "/records/personal-bests",
         "/yearly",
         "/yearly/pace",
     ]:

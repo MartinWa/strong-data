@@ -120,10 +120,10 @@ always send the parameter.
 
 `program` is available on `/summary`, `/sessions`, `/sets`, every `/series/*`
 endpoint, every `/breakdown/*` endpoint, `/yearly`, `/yearly/pace`,
-`/yearly/curve`, both `/exercises/{name}/*` endpoints, `/records/est-1rm` and
-`/records/bodyweight`. `start` and `end` are also accepted
-by the two record endpoints, so a record list can describe one period or one
-program instead of all history. Series `group_by` stays independent of the filter:
+`/yearly/curve`, both `/exercises/{name}/*` endpoints, `/records/est-1rm`,
+`/records/bodyweight` and `/records/personal-bests`. `start` and `end` are also
+accepted by the three record endpoints, so a record list can describe one period
+or one program instead of all history. Series `group_by` stays independent of the filter:
 filtering to one program and grouping by program returns that single group.
 
 ## Summary
@@ -210,6 +210,27 @@ resolves the full name.
   tie-broken by most recent `set_time`.
 - Both accept `start`, `end` and `program`; without them the row is the owner's
   all-time best for that exercise.
+- `personal-bests` returns both kinds in one response unless `kind=strength` or
+  `kind=bodyweight` narrows it. Each row holds the best set in the requested
+  range with the same selection and tie-breaks as `est-1rm` and `bodyweight`, and
+  compares it with the best set for that exercise before `start` (the same
+  `program` filter applies).
+
+| Field | Meaning |
+| --- | --- |
+| `exercise` | Exercise name |
+| `kind` | `strength` (`est_1rm` selection) or `bodyweight` (`reps` selection) |
+| `value` | `est_1rm_kg` for strength, `reps` for bodyweight, in the range |
+| `previous_value` | The same value before `start`; `null` for a first record |
+| `improvement` | `value - previous_value`; `null` for a first record |
+| `is_personal_best` | True only when `previous_value` is not null and `value > previous_value`; a tie is not a PR |
+| `reps`, `weight_kg`, `set_time` | The selected set; `weight_kg` is `null` for bodyweight rows |
+
+Rows are ordered by `kind` (strength first, then bodyweight), then `value`
+descending, then `exercise` ascending. A comparison needs `start`: when it is
+omitted every row is an all-time best with `previous_value: null`. There is no
+`limit`; each exercise appears at most once per kind. The `start <= end` and
+1830-day guards apply as everywhere else.
 
 ## Yearly
 

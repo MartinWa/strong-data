@@ -55,6 +55,42 @@ docker compose -f compose.development.yaml up --build
 Rebuild after a dependency change so the seeded virtualenv is refreshed from the
 image.
 
+## Reports benchmark
+
+The reports page renders the same query layer as the API (`api/queries.py`), so a
+new number belongs there and is covered by the parity suite. The benchmark tool
+builds a synthetic dataset and times each block and the full page:
+
+```sh
+uv run python tools/benchmark_reports.py
+uv run python tools/benchmark_reports.py --json
+```
+
+It uses a temporary SQLite database, needs no private data, and enforces the
+reference budget (2.5 s for the full page, 1.0 s for any single block) unless
+`--budget 0 --block-budget 0` is passed. CI runs the small-fixture correctness and
+query-count checks and does not run the benchmark.
+
+Reference dataset: 2,000 sessions, 60,000 sets and ten years on the Linux
+development image. The pre-optimization baseline for the `all` volume series plus
+the muscle breakdown alone was 5.0–5.1 s. After the shared query-layer pass the
+recorded timings are:
+
+| Step | Seconds |
+| --- | --- |
+| Series, volume, 12 weeks | 0.006 |
+| Series, volume, 1 year | 0.014 |
+| Series, volume, all time (chunked by year) | 0.145 |
+| Muscle totals, all time | 0.233 |
+| Consistency card, all time | 0.030 |
+| Personal bests, all time | 0.179 |
+| Yearly totals | 0.022 |
+| Full page, 12 weeks | 0.577 |
+| Full page, all time | 0.665 |
+
+Re-run the tool after changing an aggregate; a block that regresses past 1.0 s, or
+a page past 2.5 s, blocks release.
+
 ## Optional parity check
 
 Set `STRONG_LOCAL_CSV` to a local export to run the opt-in parser parity test. It

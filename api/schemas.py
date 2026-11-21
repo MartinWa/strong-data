@@ -123,6 +123,23 @@ class Est1rmRecordOut(Envelope):
     items: list[Est1rmRecordItem]
 
 
+class PersonalBestItem(Schema):
+    exercise: str
+    kind: str
+    value: float
+    previous_value: float | None
+    improvement: float | None
+    is_personal_best: bool
+    reps: int
+    weight_kg: float | None
+    set_time: str
+
+
+class PersonalBestOut(Envelope):
+    count: int
+    items: list[PersonalBestItem]
+
+
 class BodyweightRecordOut(Envelope):
     count: int
     items: list[BodyweightRecordItem]

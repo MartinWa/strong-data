@@ -9,6 +9,8 @@ urlpatterns = [
     path("preview/", views.preview, name="preview"),
     path("sessions/", views.sessions, name="sessions"),
     path("sessions/delete/", views.delete_sessions, name="delete_sessions"),
+    path("reports/", views.reports, name="reports"),
+    path("reports/exercise/<path:name>/", views.report_exercise, name="report_exercise"),
     path(
         "history/",
         RedirectView.as_view(pattern_name="sessions", permanent=True, query_string=True),
