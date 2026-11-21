@@ -100,6 +100,80 @@ even when you use the dark theme.
 There is nothing to export from the app: the Strong CSV you imported is the
 export, and sending it again reproduces the data.
 
+## Reports
+
+`/reports/` turns the stored history into training totals and trends. Every block
+uses the same query layer as the API, so a number on the page and the same number
+from `/api/v1/summary` are computed once, not twice.
+
+![The reports page: headline totals, training load, muscle balance, consistency, records and the yearly comparison](images/reports.png)
+
+### Range and filters
+
+The range chips select `4 weeks`, `12 weeks`, `6 months`, `1 year` or `All time`
+(the default is 12 weeks). The program dropdown narrows every block to one stored
+program; *All programs* clears it. Both survive the training-load switch and the
+focus year, and the whole state is in the URL, so a view can be bookmarked. No
+JavaScript is needed: the program form has an *Apply* button, which the browser
+script hides when it is available so changing the dropdown applies at once.
+
+Ranges are exact, not rounded to whole weeks or months. A week or month that only
+partly overlaps the range is drawn dimmer and marked *partial* (or *in progress*
+for the current one), but no set is left out of the totals. The *All time* range
+is fetched one calendar year at a time, so it works for histories longer than the
+API's five-year request limit.
+
+### Blocks
+
+- **Headline totals** — sessions, volume in tonnes, training time, sets and
+  sessions per week for the selected window, each compared with the immediately
+  preceding window of the same length. A percentage against a zero previous value
+  is shown as `—`; *All time* has no comparison.
+- **Training load** — volume, sessions or hours per week or month. Weekly ranges
+  with at least eight buckets add a four-bucket moving average. *Show the numbers*
+  repeats the same data as a table.
+- **Muscle balance** — share of sets per muscle group, using your corrections.
+  The top eight groups are shown and the tail is folded into `Other`, together
+  with any exercise that has no mapping. The bar is the share of sets and the
+  secondary text is volume, so a high-set bodyweight group still ranks correctly.
+- **Consistency** — a calendar heatmap of sessions per day (capped at 53 weeks,
+  with the current streak and the number of distinct training days), plus sessions
+  per weekday. Hover a cell for its date and count; both have a text table.
+- **Best lifts & PRs** — the best estimated 1RM per exercise for strength and the
+  best reps for bodyweight, top six of each. `NEW PR` means the range's best
+  strictly beats everything before `start`; a first record says *First recorded*;
+  a tie is neither. Each row opens the exercise report.
+- **This year vs previous** — cumulative volume for the focus year and up to two
+  earlier years with data, with a month-by-month table. For the current year the
+  footer shows year to date, the same point last year, a projection and the volume
+  needed per week to match last year; the projection is withheld until at least
+  four weeks of the year have elapsed. An earlier focus year is a full year with
+  its own total and change, and no projection.
+
+### Definitions
+
+Volume is the stored set volume (`weight_kg * reps`), so a bodyweight set adds no
+volume. Estimated 1RM uses Epley's formula, as the API does. A *PR* is strictly
+better than the best set before the selected period; *best in period* alone is not
+labelled a PR. Streaks count consecutive calendar days with at least one session;
+*current* is shown only when the latest training day is today or yesterday.
+Training days are distinct dates, not sessions.
+
+### Exercise reports
+
+The drill-down at `/reports/exercise/<name>/` follows the same range and program
+chips. It plots the best estimated 1RM per session (or max reps when the exercise
+has no weighted sets), lists the best set at each rep count in the period, and
+repeats the per-session numbers as a table. An exercise with no sets in the range
+shows an empty message instead of a 404; an unknown or foreign exercise name is a
+404.
+
+### Printing
+
+Printing from the browser hides the toolbar and chart switches, opens the data
+tables and keeps cards together, so the page prints as a readable report. A PDF
+is the browser's print-to-PDF output; there is no separate PNG or CSV export.
+
 ## Muscles
 
 Each new exercise name gets a guessed muscle group at import. Correct guesses on

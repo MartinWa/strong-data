@@ -280,6 +280,7 @@ def test_owner_scoping_every_endpoint(client, bob):
         "/breakdown/muscle",
         "/records/est-1rm",
         "/records/bodyweight",
+        "/records/personal-bests",
         "/yearly",
         "/yearly/pace",
         "/sessions",
@@ -491,3 +492,89 @@ def test_curve_rejects_a_year_with_too_many_digits(auth):
     response = auth.get(BASE + "/yearly/curve?year=2026&years=" + "9" * 5000)
     assert response.status_code == 422
     assert response.json()["error"]["code"] == "validation_error"
+
+
+def test_personal_bests_compare_with_prior_history(auth):
+    body = auth.get(
+        BASE + "/records/personal-bests?start=2026-02-01&end=2026-02-28&kind=strength"
+    ).json()
+    assert body["count"] == 2
+    bench, press = body["items"]
+    assert (bench["exercise"], bench["kind"], bench["value"]) == (
+        "Bench Press (Barbell)",
+        "strength",
+        99.17,
+    )
+    assert bench["previous_value"] == 93.33
+    assert bench["improvement"] == 5.84
+    assert bench["is_personal_best"] is True
+    assert (bench["reps"], bench["weight_kg"]) == (5, 85.0)
+    assert bench["set_time"].endswith("Z")
+    assert (press["exercise"], press["value"], press["previous_value"]) == (
+        "Overhead Press",
+        50.67,
+        None,
+    )
+    assert press["improvement"] is None
+    assert press["is_personal_best"] is False
+
+
+def test_personal_bests_default_to_both_kinds_and_all_time(auth):
+    body = auth.get(BASE + "/records/personal-bests").json()
+    assert body["count"] == 5
+    strengths = [row for row in body["items"] if row["kind"] == "strength"]
+    bodyweights = [row for row in body["items"] if row["kind"] == "bodyweight"]
+    assert [row["exercise"] for row in strengths] == [
+        "Bench Press (Barbell)",
+        "Seated Row (Cable)",
+        "Overhead Press",
+    ]
+    assert [row["exercise"] for row in bodyweights] == ["Chest Fly", "Pull Up"]
+    assert all(row["previous_value"] is None for row in body["items"])
+    assert all(row["is_personal_best"] is False for row in body["items"])
+    assert all(row["weight_kg"] is None for row in bodyweights)
+
+    only_bodyweight = auth.get(BASE + "/records/personal-bests?kind=bodyweight").json()
+    assert only_bodyweight["count"] == 2
+    assert {row["kind"] for row in only_bodyweight["items"]} == {"bodyweight"}
+
+
+def test_personal_bests_agree_with_record_endpoints(auth):
+    query = "/personal-bests?start=2026-01-01&end=2026-02-28&program=Push%20Day"
+    bests = auth.get(BASE + "/records" + query).json()["items"]
+    strength = {row["exercise"]: row["value"] for row in bests if row["kind"] == "strength"}
+    bodyweight = {row["exercise"]: row["value"] for row in bests if row["kind"] == "bodyweight"}
+    records = auth.get(
+        BASE + "/records/est-1rm?start=2026-01-01&end=2026-02-28&program=Push%20Day"
+    ).json()
+    assert strength == {row["exercise"]: row["est_1rm_kg"] for row in records["items"]}
+    body = auth.get(
+        BASE + "/records/bodyweight?start=2026-01-01&end=2026-02-28&program=Push%20Day"
+    ).json()
+    assert bodyweight == {row["exercise"]: row["reps"] for row in body["items"]}
+
+
+@pytest.mark.django_db
+def test_personal_bests_first_record_and_tie(client):
+    user = make_user(
+        "bests",
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2026-01-05 09:00:00,Push,30m,Bench Press,1,80,5,0,0,8.0\n"
+        "2026-02-05 09:00:00,Push,30m,Bench Press,1,80,5,0,0,8.0\n"
+        "2026-03-05 09:00:00,Push,30m,Bench Press,1,85,5,0,0,8.0\n",
+        "bests-secret",
+    )
+    client.defaults["HTTP_AUTHORIZATION"] = "Bearer bests-secret"
+
+    first = client.get(BASE + "/records/personal-bests?start=2026-01-01&end=2026-01-31").json()
+    assert first["items"][0]["previous_value"] is None
+    assert first["items"][0]["is_personal_best"] is False
+
+    tie = client.get(BASE + "/records/personal-bests?start=2026-02-01&end=2026-02-28").json()
+    assert tie["items"][0]["previous_value"] == first["items"][0]["value"]
+    assert tie["items"][0]["improvement"] == 0
+    assert tie["items"][0]["is_personal_best"] is False
+
+    later = client.get(BASE + "/records/personal-bests?start=2026-03-01&end=2026-03-31").json()
+    assert later["items"][0]["is_personal_best"] is True
+    assert user.username == "bests"

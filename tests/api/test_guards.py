@@ -118,6 +118,7 @@ def test_openapi_requires_token(auth):
         "/api/v1/series/volume",
         "/api/v1/yearly/curve",
         "/api/v1/exercises/{name}/progress",
+        "/api/v1/records/personal-bests",
         "/api/v1/sessions/{id}",
     ]:
         assert expected in paths
@@ -188,6 +189,10 @@ def test_strict_typed_parameters(client, auth):
         "/exercises/Bench%20Press%20(Barbell)/progress?group_by=week",
         "/records/est-1rm?start=2026-02-01&end=2026-01-01",
         "/records/bodyweight?limit=5",
+        "/records/personal-bests?kind=weight",
+        "/records/personal-bests?start=2026-02-01&end=2026-01-01",
+        "/records/personal-bests?limit=5",
+        "/records/personal-bests?kind=strength&kind=bodyweight",
         "/yearly?start=2026-01-01",
     ]
     for query in bad_queries:

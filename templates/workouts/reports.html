@@ -1,0 +1,333 @@
+{% extends "base.html" %}
+{% load assets %}
+{% block title %}Reports — strong-data{% endblock %}
+{% block scripts %}
+<script src="{% asset 'workouts/filters.js' %}" defer></script>
+<script src="{% asset 'workouts/print.js' %}" defer></script>
+{% endblock %}
+{% block content %}
+<div class="page-head report-head">
+  <h1>Reports</h1>
+  {% if has_data %}
+  <p class="lede">{{ period_label }} · {{ summary.sessions }} session{{ summary.sessions|pluralize }} · {{ last_session_text }}</p>
+  {% else %}
+  <p class="lede">Training totals, trends and records from your imported workouts.</p>
+  {% endif %}
+</div>
+
+{% if not has_data %}
+<div class="empty">
+  <svg class="empty-icon" width="38" height="38" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M3 9.5v5M6.5 7v10M17.5 7v10M21 9.5v5M6.5 12h11"/></svg>
+  <p>No sessions yet.</p>
+  <p class="small">Import a Strong CSV export to see reports here.</p>
+  <a class="btn btn-primary" href="{% url 'upload' %}">Upload CSV export</a>
+</div>
+{% else %}
+
+<form class="report-toolbar filters" method="get" action="{% url 'reports' %}" data-filter-form>
+  <div class="report-toolbar-range">
+    <span class="segmented" role="group" aria-label="Date range">
+      {% for option in range_options %}
+      <a class="segmented-item{% if option.current %} is-current{% endif %}" href="{% querystring range=option.key %}"{% if option.current %} aria-current="true"{% endif %}>{{ option.label }}</a>
+      {% endfor %}
+    </span>
+  </div>
+  <div class="filters-field">
+    <label for="report-program">Program</label>
+    <select id="report-program" name="program">
+      <option value="">All programs</option>
+      {% for item in programs %}
+      <option value="{{ item }}"{% if item == selected_program %} selected{% endif %}>{{ item }}</option>
+      {% endfor %}
+    </select>
+  </div>
+  <input type="hidden" name="range" value="{{ range_key }}">
+  <input type="hidden" name="metric" value="{{ metric }}">
+  {% if requested_year %}<input type="hidden" name="year" value="{{ requested_year }}">{% endif %}
+  <div class="filters-actions">
+    <button class="btn btn-primary btn-sm" type="submit">Apply</button>
+  </div>
+</form>
+
+{% if range_empty %}
+<div class="notice report-notice">
+  <p>
+    No sessions in {{ period_label }}{% if selected_program %} for {{ selected_program }}{% endif %}.
+    <a href="{% querystring range='all' %}">Show all time</a>
+    {% if selected_program %}<span aria-hidden="true">·</span> <a href="{% querystring program='' %}">Clear program</a>{% endif %}
+  </p>
+</div>
+{% else %}
+
+<div class="stat-grid report-kpis">
+  {% for card in kpis %}
+  <div class="stat">
+    <span class="stat-label">{{ card.label }}</span>
+    <span class="stat-value">{{ card.value }}</span>
+    {% if card.delta %}
+    <span class="delta delta-{{ card.delta.class }}">
+      <span aria-hidden="true">{{ card.delta.text }}</span>
+      <span class="visually-hidden">{{ card.delta.aria }}</span>
+    </span>
+    {% endif %}
+  </div>
+  {% endfor %}
+</div>
+
+<section class="card report-card">
+  <div class="card-head">
+    <h2>Training load</h2>
+    <span class="segmented segmented-sm" role="group" aria-label="Training load metric">
+      {% for option in metric_options %}
+      <a class="segmented-item{% if option.current %} is-current{% endif %}" href="{% querystring metric=option.key %}"{% if option.current %} aria-current="true"{% endif %}>{{ option.label }}</a>
+      {% endfor %}
+    </span>
+  </div>
+  {% if training_load.empty %}<p class="notice">{{ training_load.empty_text }}</p>{% endif %}
+  <div class="chart-wrap">
+    {% include "workouts/partials/report_chart.html" with chart=training_load.chart %}
+  </div>
+  {% if training_load.has_moving_average %}<p class="chart-note">Line: 4-period moving average.</p>{% endif %}
+  <details class="data-table" data-print-open>
+    <summary>Show the numbers</summary>
+    <div class="table-wrap">
+      <table class="table">
+        <caption class="visually-hidden">{{ metric }} per {{ range.bucket }} for {{ period_label }}</caption>
+        <thead>
+          <tr><th scope="col">Period</th><th scope="col" class="num">Value</th><th scope="col">Note</th></tr>
+        </thead>
+        <tbody>
+          {% for row in training_load.rows %}
+          <tr><td>{{ row.date }}</td><td class="num">{{ row.text }}</td><td>{{ row.note|default:"—" }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+</section>
+
+<div class="report-grid">
+  <section class="card report-card">
+    <div class="card-head"><h2>Muscle balance</h2><span class="muted small">Share of sets</span></div>
+    {% if muscle.total_sets %}
+    <ul class="muscle-bars">
+      {% for row in muscle.items %}
+      <li class="muscle-row">
+        <span class="muscle-name">{{ row.key }}</span>
+        <span class="muscle-track" role="presentation"><span class="muscle-fill" style="width: {{ row.share }}%"></span></span>
+        <span class="muscle-share">{{ row.share }}%</span>
+        <span class="muscle-sets">{{ row.sets }} set{{ row.sets|pluralize }}</span>
+        <span class="muscle-volume muted small">{{ row.volume }}</span>
+        {% if row.folded %}<span class="muscle-folded muted small" title="{{ row.folded }} further groups folded into Other">{{ row.folded }} groups</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No sets in this period.</p>
+    {% endif %}
+  </section>
+
+  <section class="card report-card">
+    <div class="card-head"><h2>Consistency</h2></div>
+    <div class="heatmap-scroll" tabindex="0" role="group" aria-label="Training heatmap for {{ period_label }}">
+      <div class="heatmap">
+        <div class="heatmap-months" aria-hidden="true">
+          {% for week in consistency.weeks %}<span>{{ week.label }}</span>{% endfor %}
+        </div>
+        <div class="heatmap-body">
+          <div class="heatmap-days" aria-hidden="true">
+            <span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span><span>Sun</span>
+          </div>
+          <div class="heatmap-grid">
+            {% for week in consistency.weeks %}
+            {% for cell in week.cells %}
+            <span class="heat-cell{% if cell.level is None %} is-outside{% else %} level-{{ cell.level }}{% endif %}"{% if cell.title %} title="{{ cell.title }}"{% endif %}></span>
+            {% endfor %}
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+    <p class="chart-note">
+      <span class="heat-legend" aria-hidden="true"><span class="heat-cell level-0"></span><span class="heat-cell level-1"></span><span class="heat-cell level-2"></span><span class="heat-cell level-3"></span></span>
+      Less <span aria-hidden="true">→</span> More
+    </p>
+    <p class="streak-summary">
+      <strong>{{ consistency.streaks.days }}</strong> training day{{ consistency.streaks.days|pluralize }} ·
+      current streak {{ consistency.streaks.current|default:"—" }} ·
+      longest {{ consistency.streaks.longest }}
+    </p>
+    <div class="weekday-bars" role="group" aria-label="Sessions per weekday">
+      {% for row in consistency.weekdays %}
+      <div class="weekday-bar{% if row.accent %} is-busiest{% endif %}" title="{{ row.key }}: {{ row.sessions }} session{{ row.sessions|pluralize }}, {{ row.volume }}">
+        <span class="weekday-label">{{ row.key }}</span>
+        <span class="weekday-track"><span class="weekday-fill" style="width: {{ row.width }}%"></span></span>
+        <span class="weekday-value">{{ row.sessions }}</span>
+      </div>
+      {% endfor %}
+    </div>
+    <details class="data-table" data-print-open>
+      <summary>Weekday numbers</summary>
+      <div class="table-wrap">
+        <table class="table">
+          <caption class="visually-hidden">Sessions, sets and volume per weekday for {{ period_label }}</caption>
+          <thead><tr><th scope="col">Day</th><th scope="col" class="num">Sessions</th><th scope="col" class="num">Sets</th><th scope="col" class="num">Volume</th></tr></thead>
+          <tbody>
+            {% for row in consistency.weekdays %}
+            <tr><td>{{ row.key }}</td><td class="num">{{ row.sessions }}</td><td class="num">{{ row.sets }}</td><td class="num">{{ row.volume }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    <details class="data-table" data-print-open>
+      <summary>Training days</summary>
+      <div class="table-wrap">
+        <table class="table">
+          <caption class="visually-hidden">Training days in the heatmap window</caption>
+          <thead><tr><th scope="col">Date</th><th scope="col">Day</th><th scope="col" class="num">Sessions</th></tr></thead>
+          <tbody>
+            {% for row in consistency.heat_rows %}
+            <tr><td>{{ row.date }}</td><td>{{ row.weekday }}</td><td class="num">{{ row.sessions }}</td></tr>
+            {% empty %}
+            <tr><td colspan="3">No training days in the heatmap window.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+  </section>
+</div>
+
+<div class="report-grid">
+  <section class="card report-card">
+    <div class="card-head">
+      <h2>Best lifts &amp; PRs</h2>
+      <span class="segmented segmented-sm" role="group" aria-label="Record kind">
+        <a class="segmented-item" href="#best-strength">Strength</a>
+        <a class="segmented-item" href="#best-bodyweight">Bodyweight</a>
+      </span>
+    </div>
+    <h3 id="best-strength">Strength</h3>
+    {% if best_lifts.strength.items %}
+    <ul class="record-list">
+      {% for row in best_lifts.strength.items %}
+      <li class="record-row">
+        <a class="record-name" href="{{ row.url }}">{{ row.exercise }}</a>
+        <span class="record-value">{{ row.value }}</span>
+        {% if row.badge %}<span class="badge {{ row.badge.class }}">{{ row.badge.text }}</span>{% endif %}
+        <span class="record-detail muted small">{{ row.detail }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted small">No weighted sets in this period.</p>
+    {% endif %}
+    <h3 id="best-bodyweight">Bodyweight</h3>
+    {% if best_lifts.bodyweight.items %}
+    <ul class="record-list">
+      {% for row in best_lifts.bodyweight.items %}
+      <li class="record-row">
+        <a class="record-name" href="{{ row.url }}">{{ row.exercise }}</a>
+        <span class="record-value">{{ row.value }}</span>
+        {% if row.badge %}<span class="badge {{ row.badge.class }}">{{ row.badge.text }}</span>{% endif %}
+        <span class="record-detail muted small">{{ row.detail }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted small">No bodyweight sets in this period.</p>
+    {% endif %}
+  </section>
+
+  <section class="card report-card">
+    <div class="card-head">
+      <h2>This year vs previous</h2>
+      {% if yearly.year_links %}
+      <span class="year-links" role="group" aria-label="Focus year">
+        {% for item in yearly.year_links %}
+        <a class="segmented-item{% if item.current %} is-current{% endif %}" href="{% querystring year=item.year %}"{% if item.current %} aria-current="true"{% endif %}>{{ item.year }}</a>
+        {% endfor %}
+      </span>
+      {% endif %}
+    </div>
+    {% if yearly.has_data %}
+    <div class="chart-wrap">
+      {% include "workouts/partials/report_chart.html" with chart=yearly.chart %}
+    </div>
+    {% if yearly.drawn|length > 1 %}
+    <ul class="chart-legend">
+      {% for year in yearly.drawn %}
+      <li><span class="legend-swatch series-{{ forloop.counter }}"></span>{{ year }}</li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+    {% if yearly.footer %}
+    {% if yearly.footer.kind == "current" %}
+    <dl class="year-foot">
+      <div><dt>Year to date</dt><dd>{{ yearly.footer.ytd }}</dd></div>
+      <div><dt>Same point last year</dt><dd>{{ yearly.footer.last_year }}</dd></div>
+      {% if yearly.footer.can_project %}
+      <div><dt>Projected year end</dt><dd>{{ yearly.footer.projected }}</dd></div>
+      <div><dt>Needed per week</dt><dd>{{ yearly.footer.needed_per_week }}</dd></div>
+      {% else %}
+      <div class="year-foot-note"><dt>Projection</dt><dd>Not enough of the year has elapsed to project.</dd></div>
+      {% endif %}
+    </dl>
+    {% else %}
+    <dl class="year-foot">
+      <div><dt>Full year volume</dt><dd>{{ yearly.footer.volume }}</dd></div>
+      <div><dt>Sessions</dt><dd>{{ yearly.footer.sessions }}</dd></div>
+      {% if yearly.footer.delta %}
+      <div><dt>Versus the year before</dt><dd><span class="delta delta-{{ yearly.footer.delta.class }}"><span aria-hidden="true">{{ yearly.footer.delta.text }}</span><span class="visually-hidden">{{ yearly.footer.delta.aria }}</span></span></dd></div>
+      {% endif %}
+    </dl>
+    {% endif %}
+    {% endif %}
+    <details class="data-table" data-print-open>
+      <summary>Yearly totals</summary>
+      <div class="table-wrap">
+        <table class="table">
+          <caption class="visually-hidden">Yearly totals</caption>
+          <thead><tr><th scope="col">Year</th><th scope="col" class="num">Sessions</th><th scope="col" class="num">Sets</th><th scope="col" class="num">Volume</th><th scope="col" class="num">Hours</th></tr></thead>
+          <tbody>
+            {% for row in yearly.totals_rows %}
+            <tr><td>{{ row.year }}</td><td class="num">{{ row.sessions }}</td><td class="num">{{ row.sets }}</td><td class="num">{{ row.volume }}</td><td class="num">{{ row.hours }}</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% if yearly.month_rows %}
+    <details class="data-table" data-print-open>
+      <summary>Cumulative volume by month</summary>
+      <div class="table-wrap">
+        <table class="table">
+          <caption class="visually-hidden">Cumulative volume at each month end</caption>
+          <thead>
+            <tr>
+              <th scope="col">Month</th>
+              {% for year in yearly.month_years %}<th scope="col" class="num">{{ year }}</th>{% endfor %}
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in yearly.month_rows %}
+            <tr>
+              <td>{{ row.month }}</td>
+              {% for cell in row.cells %}<td class="num">{{ cell.value }}</td>{% endfor %}
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </details>
+    {% endif %}
+    {% else %}
+    <p class="muted">No completed training years to compare yet.</p>
+    {% endif %}
+  </section>
+</div>
+
+{% endif %}
+{% endif %}
+{% endblock %}

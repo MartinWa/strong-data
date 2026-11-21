@@ -15,6 +15,8 @@ records, muscle-group corrections and a token-authenticated API.
 
 - One container, one database file: no external services, no sidecar, no
   telemetry, nothing loaded from a CDN
+- Reports for training load, muscle balance, consistency, personal records and a
+  year-over-year comparison, all server-rendered and printable
 - Idempotent import: confirming an export replaces what is stored instead of
   duplicating it
 - Read-only, versioned, owner-scoped API with a generated OpenAPI reference
@@ -32,6 +34,13 @@ sets with weight, reps, RPE, volume and estimated 1RM, grouped per exercise. Tex
 program and date filters narrow the list.
 
 ![The sessions page: a legs workout expanded into one table per exercise](docs/images/sessions.png)
+
+**Reports** turn the stored history into headline totals, training load over time,
+muscle balance, a consistency calendar, best lifts and PRs, and a year-over-year
+volume comparison. Ranges and programs are in the URL, the charts are inline SVG,
+and a drill-down follows one exercise's estimated 1RM session by session.
+
+![The reports page: headline totals, training load, muscle balance, consistency, records and the yearly comparison](docs/images/reports.png)
 
 **The API** reads the same data back. Create a named token on `/tokens/`, copy the
 secret it shows once, and send it as a bearer token; the generated reference at
