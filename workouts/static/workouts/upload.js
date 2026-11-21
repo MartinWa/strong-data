@@ -1,5 +1,6 @@
 document.querySelectorAll("[data-upload-form]").forEach(function (form) {
   const input = form.querySelector('input[type="file"]');
+  const dropzone = form.querySelector("[data-dropzone]");
   const error = form.querySelector("[data-client-error]");
   const field = input.closest(".field");
   const maxBytes = Number(form.dataset.maxBytes);
@@ -36,5 +37,39 @@ document.querySelectorAll("[data-upload-form]").forEach(function (form) {
     recover();
     form.dataset.submitting = "true";
     form.requestSubmit();
+  });
+
+  function drop(files) {
+    if (!files || !files.length || typeof DataTransfer !== "function") return;
+    const transfer = new DataTransfer();
+    transfer.items.add(files[0]);
+    input.files = transfer.files;
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  }
+
+  if (!dropzone) return;
+
+  function hasFiles(event) {
+    return Array.from(event.dataTransfer.types || []).includes("Files");
+  }
+
+  ["dragenter", "dragover"].forEach(function (type) {
+    dropzone.addEventListener(type, function (event) {
+      if (!hasFiles(event)) return;
+      event.preventDefault();
+      dropzone.classList.add("is-dragging");
+    });
+  });
+
+  dropzone.addEventListener("dragleave", function (event) {
+    if (dropzone.contains(event.relatedTarget)) return;
+    dropzone.classList.remove("is-dragging");
+  });
+
+  dropzone.addEventListener("drop", function (event) {
+    event.preventDefault();
+    dropzone.classList.remove("is-dragging");
+    if (event.target.closest('input[type="file"]')) return;
+    drop(event.dataTransfer && event.dataTransfer.files);
   });
 });

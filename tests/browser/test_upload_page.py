@@ -295,3 +295,27 @@ def test_visiting_preview_without_a_pending_import_explains_the_redirect(client)
     assert response.redirect_chain == [(reverse("upload"), 302)]
     content = response.content.decode()
     assert "Your preview expired or was not found. Upload the CSV again." in content
+
+
+@pytest.mark.django_db
+def test_the_picker_sits_in_a_dropzone_that_keeps_the_file_input(client):
+    signed_in(client)
+
+    content = client.get(reverse("upload")).content.decode()
+
+    assert '<div class="dropzone" data-dropzone>' in content
+    assert "Drag a CSV export here" in content
+    assert content.index("data-dropzone") < content.index('id="id_csv_file"')
+
+
+def test_the_dropzone_reuses_the_input_and_its_size_check():
+    from pathlib import Path
+
+    from django.contrib.staticfiles import finders
+
+    script = Path(finders.find("workouts/upload.js")).read_text(encoding="utf-8")
+
+    assert "input.files = transfer.files" in script
+    assert 'dispatchEvent(new Event("change", { bubbles: true }))' in script
+    assert "form.requestSubmit()" in script
+    assert "is-dragging" in script

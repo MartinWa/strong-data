@@ -1,10 +1,11 @@
 from datetime import UTC, date, datetime
 
 import pytest
+from django.core.paginator import Paginator
 from django.template import Context, Template
 from django.test import override_settings
 
-from workouts.templatetags.formatting import isodate, isominute, kg, num
+from workouts.templatetags.formatting import elided_pages, isodate, isominute, kg, num
 
 
 @pytest.mark.parametrize(
@@ -66,3 +67,21 @@ def test_datetime_filters_render_in_the_configured_time_zone(name):
     )
 
     assert rendered == "2026-06-20 10:00"
+
+
+def test_elided_pages_window_around_the_current_page():
+    page = Paginator(list(range(500)), 25).get_page(10)
+
+    assert list(elided_pages(page)) == [1, "…", 9, 10, 11, "…", 20]
+
+
+def test_elided_pages_do_not_repeat_the_ends():
+    page = Paginator(list(range(150)), 25).get_page(1)
+
+    assert list(elided_pages(page)) == [1, 2, "…", 6]
+
+
+def test_elided_pages_lists_every_page_when_the_list_is_short():
+    page = Paginator(list(range(75)), 25).get_page(2)
+
+    assert list(elided_pages(page)) == [1, 2, 3]

@@ -428,9 +428,9 @@ def test_sessions_rows_are_collapsed_details(client):
 
     content = client.get(reverse("sessions")).content.decode()
 
-    assert '<details class="card session">' in content
+    assert '<details class="card session" data-print-open>' in content
     assert '<summary class="session-head">' in content
-    assert '<details class="card session" open' not in content
+    assert '<details class="card session" data-print-open open' not in content
     assert "Bench Press (Barbell)" in content
 
 
@@ -725,7 +725,7 @@ def test_sessions_paginates_sessions(client):
         first.context["page"].object_list[0].session_date
         > second.context["page"].object_list[0].session_date
     )
-    assert b'href="?page=2">Next</a>' in first.content
+    assert b'href="?page=2" rel="next">Next</a>' in first.content
     assert b'aria-disabled="true" tabindex="0">Previous</a>' in first.content
     assert "Sessions" in first.content.decode()
     assert "Import history" not in first.content.decode()
@@ -1028,8 +1028,10 @@ def test_the_list_is_paged_and_saves_only_the_visible_rows(client):
     second = client.get(reverse("muscles"), {"page": 2})
 
     assert first.content.decode().count("data-muscle-row") == MUSCLES_PAGE_SIZE
-    assert "Page 1 of 4" in first.content.decode()
-    assert "Page 2 of 4" in second.content.decode()
+    assert 'aria-current="page">1</span>' in first.content.decode()
+    page_two = '<a class="pager-page" href="?page=2" aria-label="Page 2">2</a>'
+    assert page_two in first.content.decode()
+    assert 'aria-current="page">2</span>' in second.content.decode()
 
     payload = muscle_payload(user, {"Exercise 0150": "Quads"}, start=MUSCLES_PAGE_SIZE)
     payload["csrfmiddlewaretoken"] = "0" * 64
@@ -1051,7 +1053,7 @@ def test_two_thousand_exercises_can_be_saved_page_by_page(client):
     last = client.get(reverse("muscles"), {"page": 21})
 
     assert last.status_code == 200
-    assert "Page 21 of 21" in last.content.decode()
+    assert 'aria-current="page">21</span>' in last.content.decode()
 
     payload = muscle_payload(user, {"Exercise 2000": "Quads"}, start=2000)
     payload["csrfmiddlewaretoken"] = "0" * 64
@@ -1237,3 +1239,92 @@ def test_login_with_remember_me_keeps_the_configured_session_age(client):
 
     assert response.status_code == 302
     assert client.session.get_expire_at_browser_close() is False
+
+
+@pytest.mark.django_db
+def test_muscles_filter_narrows_to_the_matching_exercise(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("muscles"), {"q": "chest"}).content.decode()
+
+    assert content.count("data-muscle-row") == 1
+    assert "Chest Fly" in content
+    assert "Bench Press (Barbell)" not in content
+    assert '<input id="muscle-q" type="search" name="q" value="chest"' in content
+    assert '<input type="hidden" name="q" value="chest">' in content
+
+
+@pytest.mark.django_db
+def test_muscles_filter_without_matches_offers_to_clear_it(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+
+    content = client.get(reverse("muscles"), {"q": "deadlift"}).content.decode()
+
+    assert "No exercises match “deadlift”." in content
+    assert "data-muscle-form" not in content
+    assert "Clear filter" in content
+
+
+@pytest.mark.django_db
+def test_saving_a_filtered_page_keeps_the_filter(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, CSV)
+    client.force_login(user)
+    meta = ExerciseMeta.objects.get(owner=user, exercise_name="Chest Fly")
+
+    response = client.post(
+        reverse("muscles"),
+        {
+            "q": "chest",
+            "page": "1",
+            "form-TOTAL_FORMS": "1",
+            "form-INITIAL_FORMS": "1",
+            "form-MIN_NUM_FORMS": "0",
+            "form-MAX_NUM_FORMS": str(MUSCLES_PAGE_SIZE),
+            "form-0-id": str(meta.pk),
+            "form-0-muscle_group": "Core",
+            "form-0-muscle_group_custom": "",
+        },
+    )
+
+    assert response.status_code == 302
+    assert response.url == "/muscles/?page=1&q=chest"
+    assert ExerciseMeta.objects.get(pk=meta.pk).muscle_group == "Core"
+
+
+@pytest.mark.django_db
+def test_the_pager_keeps_the_muscle_filter(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    _seed_exercises(user, 150)
+    client.force_login(user)
+
+    content = client.get(reverse("muscles"), {"q": "Exercise"}).content.decode()
+
+    assert 'href="?q=Exercise&amp;page=2"' in content
+
+
+@pytest.mark.django_db
+def test_the_muscle_filter_box_only_appears_once_exercises_exist(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    assert "data-filter-form" not in client.get(reverse("muscles")).content.decode()
+
+    import_workouts_csv(user, CSV)
+
+    assert "data-filter-form" in client.get(reverse("muscles")).content.decode()
+
+
+@pytest.mark.django_db
+def test_the_muscles_empty_state_is_illustrated(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    content = client.get(reverse("muscles")).content.decode()
+
+    assert content.count('class="empty-icon"') == 1
+    assert "No exercises imported yet." in content

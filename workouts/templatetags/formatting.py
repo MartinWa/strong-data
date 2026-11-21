@@ -46,6 +46,11 @@ def kg(value):
     return f"{num(value)} kg"
 
 
+@register.filter
+def elided_pages(page):
+    return page.paginator.get_elided_page_range(page.number, on_each_side=1, on_ends=1)
+
+
 @register.filter(expects_localtime=True)
 def isominute(value):
     if not value:

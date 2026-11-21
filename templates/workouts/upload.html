@@ -16,7 +16,10 @@
         data-max-bytes="{{ max_upload_bytes }}"
         data-too-large="{{ too_large_message }}">
     {% csrf_token %}
-    {% include "partials/field.html" with field=form.csv_file force_invalid=too_large client_error=True %}
+    <div class="dropzone" data-dropzone>
+      <p class="dropzone-hint">Drag a CSV export here, or choose a file below.</p>
+      {% include "partials/field.html" with field=form.csv_file force_invalid=too_large client_error=True %}
+    </div>
     <noscript>
       <div class="actions">
         <button class="btn btn-primary" type="submit">Preview</button>

@@ -2,6 +2,13 @@
 
 Getting a Strong CSV export into strong-data, and reading it back.
 
+## Appearance
+
+The app is available in a light and a dark theme. It starts from your operating
+system setting and keeps following it until you use the sun or moon button in the
+header, which pins a theme for that browser. The choice is stored only in that
+browser, so it survives restarts but is not tied to your account.
+
 ## Accounts
 
 Accounts are created by an administrator; see [accounts](deployment.md#accounts)
@@ -16,9 +23,9 @@ upload page repeats these steps where you need them.
 
 1. **In the Strong app**, open your profile or its settings, choose **Export
    workouts** (some versions call it **Export data**) and save the CSV.
-2. **Upload** (`/upload/`) — choose the file. It must be the CSV Strong exports
-   and at most 10 MB; columns the app does not read are ignored. Choosing it opens
-   the preview.
+2. **Upload** (`/upload/`) — choose the file, or drag it onto the page. It must be
+   the CSV Strong exports and at most 10 MB; columns the app does not read are
+   ignored. Choosing it opens the preview.
 3. **Preview** (`/preview/`) — check the sessions, a sample of sets, and any
    warnings, then choose *Confirm import*. Confirming imports the whole file, not
    only the sampled sets. *Cancel* throws the preview away and nothing is
@@ -84,6 +91,10 @@ katakana exercise name.
 your account after a second confirmation. Corrections and tokens are kept, so a
 later import reuses your corrections instead of re-guessing them.
 
+The pager numbers the pages around the one you are on, and printing from the
+browser expands every session, drops the navigation and prints on a white sheet
+even when you use the dark theme.
+
 There is nothing to export from the app: the Strong CSV you imported is the
 export, and sending it again reproduces the data.
 
@@ -97,7 +108,9 @@ preserved by later imports.
 
 The page lists 100 names at a time; edit the rows you want and choose *Save all*,
 which appears once anything differs from what is stored and saves the rows on that
-page. *Cancel* reverts the page.
+page. Rows holding unsaved changes are marked until you save or *Cancel* them.
+*Cancel* reverts the page. A search box narrows the list by exercise name and
+survives paging and saving.
 
 Each row offers the guessed groups plus every group you already use, so a group
 you invented earlier is one click away. *Custom…* accepts any name (for example

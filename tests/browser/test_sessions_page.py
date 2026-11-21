@@ -1,5 +1,9 @@
+from datetime import date, timedelta
+from pathlib import Path
+
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles import finders
 from django.urls import reverse
 
 from workouts.models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
@@ -212,3 +216,72 @@ def test_disabled_pager_link_has_no_target_to_activate(client):
     assert len(disabled) == 1
     assert "href=" not in disabled[0]
     assert 'tabindex="0"' in disabled[0]
+
+
+@pytest.mark.django_db
+def test_pager_numbers_the_pages_and_marks_the_current_one(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    rows = "\n".join(
+        f"{date(2026, 1, 1) + timedelta(days=day)} 09:00:00,Push Day,54m,Bench Press,1,80,5,0,0,8"
+        for day in range(60)
+    )
+    import_workouts_csv(user, HEADER + rows + "\n")
+    client.force_login(user)
+
+    content = client.get(reverse("sessions"), {"page": 2}).content.decode()
+
+    assert '<span class="pager-page is-current" aria-current="page">2</span>' in content
+    assert '<a class="pager-page" href="?page=1" aria-label="Page 1">1</a>' in content
+    assert '<a class="pager-page" href="?page=3" aria-label="Page 3">3</a>' in content
+
+
+@pytest.mark.django_db
+def test_printing_expands_every_session_and_loads_the_print_script(client):
+    user = session_with_data()
+    client.force_login(user)
+
+    content = client.get(reverse("sessions")).content.decode()
+
+    assert 'src="/static/workouts/print.js"' in content
+    assert content.count("data-print-open") == 1
+
+
+def test_the_print_script_opens_details_for_paper_and_restores_them():
+    script = Path(finders.find("workouts/print.js")).read_text(encoding="utf-8")
+
+    assert '"beforeprint"' in script
+    assert '"afterprint"' in script
+    assert "item.open = true" in script
+    assert "item.open = false" in script
+
+
+def test_the_print_stylesheet_unclips_tables_and_forces_light_colours():
+    css = Path(finders.find("workouts/app.css")).read_text(encoding="utf-8")
+    printed = css[css.index("@media print") :]
+
+    assert ".table-wrap {\n    overflow: visible;\n  }" in printed
+    assert "break-inside: avoid" in printed
+    assert ':root[data-theme="dark"]' in printed
+    assert "--bg: #fff;" in printed
+
+
+@pytest.mark.django_db
+def test_the_empty_sessions_state_is_illustrated(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    content = client.get(reverse("sessions")).content.decode()
+
+    assert content.count('class="empty-icon"') == 1
+    assert "No sessions yet." in content
+
+
+@pytest.mark.django_db
+def test_the_filtered_empty_state_uses_a_search_icon(client):
+    user = session_with_data()
+    client.force_login(user)
+
+    content = client.get(reverse("sessions"), {"q": "nothing-matches"}).content.decode()
+
+    assert content.count('class="empty-icon"') == 1
+    assert '<circle cx="11" cy="11" r="6.5"/>' in content

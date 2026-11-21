@@ -5,6 +5,24 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light dark">
+  <script>
+    (function () {
+      var key = "strong-data:theme";
+      var root = document.documentElement;
+      var stored = null;
+      try {
+        stored = window.localStorage.getItem(key);
+      } catch (error) {
+        stored = null;
+      }
+      root.dataset.theme =
+        stored === "dark" || stored === "light"
+          ? stored
+          : window.matchMedia("(prefers-color-scheme: dark)").matches
+            ? "dark"
+            : "light";
+    })();
+  </script>
   <title>{% block title %}strong-data{% endblock %}</title>
   <link rel="icon" href="{% asset 'workouts/favicon.svg' %}" type="image/svg+xml">
   <link rel="stylesheet" href="{% asset 'workouts/app.css' %}">
@@ -21,11 +39,20 @@
         <a href="{% url 'muscles' %}"{% if request.resolver_match.url_name == 'muscles' %} class="active" aria-current="page"{% endif %}>Muscles</a>
         <a href="{% url 'tokens' %}"{% if request.resolver_match.url_name == 'tokens' %} class="active" aria-current="page"{% endif %}>Tokens</a>
       </nav>
-      <form class="logout" action="{% url 'logout' %}" method="post">
-        {% csrf_token %}
-        <button class="btn btn-ghost btn-sm" type="submit">Log out</button>
-      </form>
       {% endif %}
+      <div class="header-tools">
+        <button class="theme-toggle" type="button" data-theme-toggle aria-pressed="false" hidden>
+          <svg class="icon theme-icon-sun" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M4.2 4.2l1.6 1.6M18.2 18.2l1.6 1.6M2.5 12h2.2M19.3 12h2.2M4.2 19.8l1.6-1.6M18.2 5.8l1.6-1.6"/></svg>
+          <svg class="icon theme-icon-moon" width="18" height="18" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z"/></svg>
+          <span class="visually-hidden">Dark theme</span>
+        </button>
+        {% if user.is_authenticated %}
+        <form class="logout" action="{% url 'logout' %}" method="post">
+          {% csrf_token %}
+          <button class="btn btn-ghost btn-sm" type="submit">Log out</button>
+        </form>
+        {% endif %}
+      </div>
     </div>
   </header>
 
@@ -60,6 +87,7 @@
     </div>
   </footer>
   {% block scripts %}{% endblock %}
+  <script src="{% asset 'workouts/theme.js' %}" defer></script>
   <script src="{% asset 'workouts/releases.js' %}" defer></script>
 </body>
 </html>

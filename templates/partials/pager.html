@@ -1,0 +1,25 @@
+{% load formatting %}{% if page.has_other_pages %}
+<nav class="pager" aria-label="Pagination">
+  {% if page.has_previous %}
+  <a class="btn btn-sm" href="{% querystring page=page.previous_page_number %}" rel="prev">Previous</a>
+  {% else %}
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Previous</a>
+  {% endif %}
+  <span class="pager-pages">
+    {% for number in page|elided_pages %}
+    {% if number == page.number %}
+    <span class="pager-page is-current" aria-current="page">{{ number }}</span>
+    {% elif number == page.paginator.ELLIPSIS %}
+    <span class="pager-page pager-gap" aria-hidden="true">{{ number }}</span>
+    {% else %}
+    <a class="pager-page" href="{% querystring page=number %}" aria-label="Page {{ number }}">{{ number }}</a>
+    {% endif %}
+    {% endfor %}
+  </span>
+  {% if page.has_next %}
+  <a class="btn btn-sm" href="{% querystring page=page.next_page_number %}" rel="next">Next</a>
+  {% else %}
+  <a class="btn btn-sm" aria-disabled="true" tabindex="0">Next</a>
+  {% endif %}
+</nav>
+{% endif %}
