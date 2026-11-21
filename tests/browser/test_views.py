@@ -9,6 +9,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
 from django.db import connection
+from django.test import override_settings
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
 from django.utils import timezone
@@ -1170,6 +1171,19 @@ def test_token_list_shows_the_expiry(client):
     content = response.content.decode()
 
     assert '<td data-label="Expiry" class="muted">2030-01-01 00:00</td>' in content
+
+
+@pytest.mark.django_db
+@override_settings(TIME_ZONE="Europe/Stockholm")
+def test_token_list_shows_the_expiry_in_the_configured_time_zone(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+    client.post(reverse("tokens"), {"name": "reader", "expires_at": "2030-06-01T10:00"})
+
+    response = client.get(reverse("tokens"))
+    content = response.content.decode()
+
+    assert '<td data-label="Expiry" class="muted">2030-06-01 10:00</td>' in content
 
 
 @pytest.mark.django_db

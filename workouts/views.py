@@ -26,11 +26,10 @@ from .forms import (
     clean_group_name,
     muscle_group_options,
 )
+from .limits import MAX_UPLOAD_BYTES, MULTIPART_OVERHEAD_BYTES
 from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from .services import EmptyImportError, import_workouts_csv
 
-MAX_UPLOAD_BYTES = 10 * 1024 * 1024
-MULTIPART_OVERHEAD_BYTES = 1024 * 1024
 MUSCLES_PAGE_SIZE = 100
 ExerciseMetaFormSet = modelformset_factory(
     ExerciseMeta,

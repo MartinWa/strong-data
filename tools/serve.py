@@ -7,6 +7,7 @@ from waitress import serve
 
 from strong_data.wsgi import application
 from workouts import pending
+from workouts.limits import MAX_REQUEST_BODY_BYTES
 
 TRUSTED_PROXY = os.environ.get("STRONG_TRUSTED_PROXY", "").strip() or None
 PORT = int(os.environ.get("STRONG_PORT", "8000"))
@@ -45,4 +46,5 @@ serve(
     trusted_proxy=TRUSTED_PROXY,
     trusted_proxy_headers={"x-forwarded-proto"},
     clear_untrusted_proxy_headers=True,
+    max_request_body_size=MAX_REQUEST_BODY_BYTES,
 )

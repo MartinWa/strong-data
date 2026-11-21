@@ -190,6 +190,15 @@ def test_production_entrypoint_starts_the_pending_sweeper():
     assert "pending.start_sweeper(settings.PENDING_SWEEP_SECONDS)" in text
 
 
+def test_production_body_cap_probe_derives_from_the_configured_cap():
+    text = (REPO_ROOT / "tools/check_production.py").read_text(encoding="utf-8")
+
+    assert "max_request_body_size=MAX_REQUEST_BODY_BYTES" in (
+        REPO_ROOT / "tools/serve.py"
+    ).read_text(encoding="utf-8")
+    assert "OVERSIZED_BODY_BYTES = MAX_REQUEST_BODY_BYTES + 1" in text
+
+
 def test_development_compose_needs_no_env_file():
     text = (REPO_ROOT / "compose.development.yaml").read_text(encoding="utf-8")
 
@@ -208,6 +217,16 @@ def test_restore_docs_stop_copy_rechown_and_start():
     start = restore.index("docker compose start web")
     assert stop < copy < chown < start
     assert "strong.sqlite3-wal" in restore
+
+
+def test_backup_verification_reads_the_copy_immutably():
+    text = (REPO_ROOT / "docs/backup-and-recovery.md").read_text(encoding="utf-8")
+    verify = text[text.index("## Verify a backup") : text.index("## Restore")]
+
+    assert "mode=ro&immutable=1" in verify
+    assert "uri=True" in verify
+    assert "strong-data:local" in verify
+    assert "ghcr.io/" in verify
 
 
 def test_ownership_is_fixed_on_the_host_never_in_a_root_container():

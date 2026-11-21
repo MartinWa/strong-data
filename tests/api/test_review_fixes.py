@@ -11,7 +11,7 @@ from django.utils import timezone
 
 import api.auth as auth_module
 from api.queries import SESSION_SORT_KEYS, SET_SORT_KEYS
-from tests.api.conftest import SECRET
+from tests.api.conftest import SECRET, make_user
 from tests.api.test_guards import assert_error
 from workouts.models import ApiToken, WorkoutSession
 from workouts.services import import_workouts_csv
@@ -247,6 +247,46 @@ def test_short_one_sided_series_range_is_allowed(client):
     body = client.get(BASE + "/series/sessions?bucket=day&start=2026-01-01").json()
 
     assert body["count"] == 2
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize(
+    ("bucket", "start", "expected"),
+    [
+        ("week", "2032-06-16", "2032-06-14"),
+        ("month", "2032-06-15", "2032-06-01"),
+        ("year", "2032-06-15", "2032-01-01"),
+    ],
+)
+def test_one_sided_series_range_ends_on_the_matching_date(client, bucket, start, expected):
+    user = make_token_user(client, "bucketend", "bucketend-secret")
+    make_session(user, date(2032, 6, 20), "June")
+
+    response = client.get(BASE + f"/series/sessions?bucket={bucket}&start={start}")
+
+    assert response.status_code == 200, response.content[:300]
+    body = response.json()
+    assert body["count"] == 1
+    assert body["items"][0]["bucket_start"] == expected
+
+
+@pytest.mark.django_db
+def test_one_sided_volume_series_ends_on_the_matching_set_date(client):
+    make_user(
+        "setrange",
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2032-06-20 09:00:00,June,54m,Bench Press (Barbell),1,80,5,0,0,8.0\n",
+        "setrange-secret",
+    )
+    client.defaults["HTTP_AUTHORIZATION"] = "Bearer setrange-secret"
+
+    response = client.get(BASE + "/series/volume?bucket=month&start=2032-06-15")
+
+    assert response.status_code == 200, response.content[:300]
+    body = response.json()
+    assert body["count"] == 1
+    assert body["items"][0]["bucket_start"] == "2032-06-01"
+    assert body["items"][0]["value"] == 400.0
 
 
 @pytest.mark.django_db

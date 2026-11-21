@@ -240,6 +240,24 @@ def test_values_exceeding_field_bounds_are_not_stored():
     assert all("stored as null" in warning for warning in result.warnings)
 
 
+def test_invalid_distance_and_seconds_are_reported():
+    text = csv_text(
+        "2026-01-05 08:00:00,Push,54m,Bench,1,80,5,far,3.5,8",
+        "2026-01-05 08:01:00,Push,54m,Bench,1,80,5,1.5,soon,8",
+        "2026-01-05 08:02:00,Push,54m,Bench,1,80,5,,,8",
+    )
+    result = parse_workouts(text)
+
+    first, second, third = result.sessions[0].sets
+    assert first.distance is None and first.seconds == Decimal("3.5")
+    assert second.distance == Decimal("1.5") and second.seconds is None
+    assert third.distance is None and third.seconds is None
+    assert result.warnings == (
+        "Row 2: invalid distance; stored as null",
+        "Row 3: invalid seconds; stored as null",
+    )
+
+
 def test_oversized_names_are_skipped():
     long_name = "x" * 256
     result = parse_workouts(
