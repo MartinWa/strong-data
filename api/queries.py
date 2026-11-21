@@ -219,15 +219,22 @@ def _series_bounds(user, start, end, program):
     )
 
 
-def _grouped_series_data(user, metric, bucket, group_by, start, end, moving_average, program):
+def per_session(volume, sessions):
+    if not sessions:
+        return 0.0
+    return Decimal(volume) / Decimal(sessions)
+
+
+def _accumulated_series_data(user, metric, bucket, group_by, start, end, moving_average, program):
     mapping = muscle_map(user)
+    zero = Decimal(0) if metric in {"volume", "volume-per-session", "training-time"} else 0
 
     def accumulator():
         return {
             "sessions": set(),
-            "volume": 0.0,
-            "duration": 0.0,
-            "groups": defaultdict(lambda: {"value": 0.0, "sessions": set()}),
+            "volume": zero,
+            "duration": zero,
+            "groups": defaultdict(lambda: {"value": zero, "sessions": set()}),
         }
 
     acc = defaultdict(accumulator)
@@ -243,16 +250,16 @@ def _grouped_series_data(user, metric, bucket, group_by, start, end, moving_aver
             entry = acc[bucket_start(row["session_date"], bucket)]
             entry["sessions"].add(row["id"])
             if metric == "training-time":
-                entry["duration"] += (row["duration_min"] or 0) / 60
+                entry["duration"] += Decimal(row["duration_min"] or 0)
             elif metric == "volume-per-session":
-                entry["volume"] += float(row["total_volume_kg"])
+                entry["volume"] += row["total_volume_kg"]
             key = row["program"]
             entry["groups"][key]["value"] += (
                 1
                 if metric == "sessions"
-                else float(row["total_volume_kg"])
+                else row["total_volume_kg"]
                 if metric == "volume-per-session"
-                else (row["duration_min"] or 0) / 60
+                else Decimal(row["duration_min"] or 0)
             )
             entry["groups"][key]["sessions"].add(row["id"])
             all_groups.add(key)
@@ -263,7 +270,7 @@ def _grouped_series_data(user, metric, bucket, group_by, start, end, moving_aver
         for row in rows:
             dates.append(row["session__session_date"])
             entry = acc[bucket_start(row["session__session_date"], bucket)]
-            volume = float(row["volume_kg"])
+            volume = row["volume_kg"]
             entry["volume"] += volume
             entry["sessions"].add(row["session_id"])
             if group_by == "program":
@@ -290,11 +297,11 @@ def _grouped_series_data(user, metric, bucket, group_by, start, end, moving_aver
         if metric == "sessions":
             value = len(entry["sessions"]) if entry else 0
         elif metric == "training-time":
-            value = entry["duration"] if entry else 0.0
+            value = (entry["duration"] if entry else zero) / Decimal(60)
         elif metric == "volume-per-session":
-            value = entry["volume"] / len(entry["sessions"]) if entry and entry["sessions"] else 0.0
+            value = per_session(entry["volume"], len(entry["sessions"])) if entry else 0.0
         else:
-            value = entry["volume"] if entry else 0.0
+            value = entry["volume"] if entry else zero
         groups = None
         if group_by:
             groups = []
@@ -302,12 +309,14 @@ def _grouped_series_data(user, metric, bucket, group_by, start, end, moving_aver
                 group_entry = entry["groups"].get(key) if entry else None
                 if metric == "volume-per-session":
                     group_value = (
-                        group_entry["value"] / len(group_entry["sessions"])
-                        if group_entry and group_entry["sessions"]
+                        per_session(group_entry["value"], len(group_entry["sessions"]))
+                        if group_entry
                         else 0.0
                     )
+                elif metric == "training-time":
+                    group_value = (group_entry["value"] if group_entry else zero) / Decimal(60)
                 else:
-                    group_value = group_entry["value"] if group_entry else 0.0
+                    group_value = group_entry["value"] if group_entry else zero
                 groups.append({"key": key, "value": round2(group_value)})
         items.append(
             {
@@ -328,8 +337,8 @@ def _grouped_series_data(user, metric, bucket, group_by, start, end, moving_aver
 
 def series_data(user, metric, bucket, group_by, start, end, moving_average, program):
     validate_series_options(metric, bucket, group_by, moving_average)
-    if group_by is not None:
-        return _grouped_series_data(
+    if group_by is not None or metric == "volume-per-session":
+        return _accumulated_series_data(
             user, metric, bucket, group_by, start, end, moving_average, program
         )
 
@@ -365,6 +374,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
     validate_date_range(effective_start, effective_end)
 
     by_bucket = {row["bucket_value"]: row for row in rows}
+    zero = Decimal(0) if metric in {"volume", "training-time"} else 0
     items = []
     values = []
     for current in iter_buckets(effective_start, effective_end, bucket):
@@ -372,11 +382,11 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
         if metric == "sessions":
             value = row["sessions"] if row else 0
         elif metric == "training-time":
-            value = (row["duration"] or 0) / 60 if row else 0.0
+            value = Decimal(row["duration"] or 0) / Decimal(60) if row else zero
         elif metric == "volume-per-session":
-            value = float(row["volume"]) / row["sessions"] if row else 0.0
+            value = per_session(row["volume"], row["sessions"]) if row else zero
         else:
-            value = float(row["volume"]) if row else 0.0
+            value = row["volume"] if row else zero
         items.append(
             {
                 "bucket_start": current.isoformat(),
