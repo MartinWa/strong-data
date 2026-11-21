@@ -204,8 +204,11 @@ workouts.example.com {
 }
 ```
 
-nginx and Traefik need the header set explicitly. Keep `.env` private: it is
-gitignored, excluded from the image build context, and must never be committed.
+nginx and Traefik need the header set explicitly. The app enforces the upload
+limit on its own side too: the server refuses request bodies above 11 MB before
+reading them, so a proxy that forgets its own limit cannot be used to fill the
+container's temporary storage. Keep `.env` private: it is gitignored, excluded
+from the image build context, and must never be committed.
 
 ## Housekeeping
 

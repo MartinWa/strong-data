@@ -1,5 +1,6 @@
 """Verify the production image on disposable storage without external access."""
 
+import http.client
 import importlib.util
 import os
 import socket
@@ -31,6 +32,18 @@ def request(port, path, token=None):
             return response.status, response.headers
     except urllib.error.HTTPError as error:
         return error.code, error.headers
+
+
+def request_with_declared_body(port, size):
+    connection = http.client.HTTPConnection("127.0.0.1", port, timeout=10)
+    try:
+        connection.putrequest("POST", "/upload/")
+        connection.putheader("Content-Length", str(size))
+        connection.putheader("Content-Type", "multipart/form-data; boundary=synthetic")
+        connection.endheaders()
+        return connection.getresponse().status
+    finally:
+        connection.close()
 
 
 def wait_until_healthy(port, attempts=120):
@@ -81,6 +94,8 @@ def verify_serving(database):
         assert status == 401, status
         status, _ = request(port, "/")
         assert status in (200, 301, 302), status
+        status = request_with_declared_body(port, 1024 * 1024 * 1024)
+        assert status == 413, status
     finally:
         child.terminate()
         child.wait(timeout=30)

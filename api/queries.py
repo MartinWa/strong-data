@@ -204,6 +204,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
         }
 
     acc = defaultdict(accumulator)
+    dates = []
     all_groups = set()
 
     def group_key(session, item=None):
@@ -215,6 +216,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
 
     if metric in {"sessions", "training-time", "volume-per-session"}:
         for session in owned_sessions(user, start=start, end=end, program=program):
+            dates.append(session.session_date)
             bucket_key = bucket_start(session.session_date, bucket)
             entry = acc[bucket_key]
             entry["sessions"].add(session.id)
@@ -236,6 +238,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
                 all_groups.add(key)
     else:
         for item in owned_sets(user, start=start, end=end, program=program):
+            dates.append(item.session.session_date)
             bucket_key = bucket_start(item.session.session_date, bucket)
             entry = acc[bucket_key]
             volume = float(item.volume_kg)
@@ -250,11 +253,8 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
     if not acc and (start is None or end is None):
         return {"bucket": bucket, "group_by": group_by, "count": 0, "items": []}
 
-    if acc:
-        effective_start = start or min(acc)
-        effective_end = end or max(acc)
-    else:
-        effective_start, effective_end = start, end
+    effective_start = start if start is not None else min(dates)
+    effective_end = end if end is not None else max(dates)
     validate_date_range(effective_start, effective_end)
 
     items = []

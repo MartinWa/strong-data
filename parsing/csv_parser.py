@@ -276,20 +276,26 @@ def parse_workouts(text: str) -> ParsedWorkouts:
             warnings.append(f"Row {line}: invalid weight; stored as null")
         if weight == 0:
             weight = None
-        distance = to_decimal(row.get("Distance"))
+        raw_distance = (row.get("Distance") or "").strip()
+        distance = to_decimal(raw_distance)
         if distance is not None and distance < 0:
             warnings.append(f"Row {line}: negative distance; stored as null")
             distance = None
-        if distance is not None and not fits_decimal(distance, "distance"):
+        elif distance is not None and not fits_decimal(distance, "distance"):
             warnings.append(f"Row {line}: distance out of range; stored as null")
             distance = None
-        seconds = to_decimal(row.get("Seconds"))
+        elif distance is None and raw_distance:
+            warnings.append(f"Row {line}: invalid distance; stored as null")
+        raw_seconds = (row.get("Seconds") or "").strip()
+        seconds = to_decimal(raw_seconds)
         if seconds is not None and seconds < 0:
             warnings.append(f"Row {line}: negative seconds; stored as null")
             seconds = None
-        if seconds is not None and not fits_decimal(seconds, "seconds"):
+        elif seconds is not None and not fits_decimal(seconds, "seconds"):
             warnings.append(f"Row {line}: seconds out of range; stored as null")
             seconds = None
+        elif seconds is None and raw_seconds:
+            warnings.append(f"Row {line}: invalid seconds; stored as null")
         raw_rpe = (row.get("RPE") or "").strip()
         rpe = parse_rpe(raw_rpe)
         if raw_rpe and rpe is None:

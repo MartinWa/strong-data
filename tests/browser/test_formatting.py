@@ -1,6 +1,8 @@
-from datetime import date, datetime
+from datetime import UTC, date, datetime
 
 import pytest
+from django.template import Context, Template
+from django.test import override_settings
 
 from workouts.templatetags.formatting import isodate, isominute, kg, num
 
@@ -52,3 +54,15 @@ def test_isominute_drops_seconds_from_datetimes_and_strings():
     assert isominute("2026-01-05 09:00:30") == "2026-01-05 09:00"
     assert isominute("2026-01-05") == "2026-01-05 00:00"
     assert isominute(None) == "—"
+
+
+@override_settings(TIME_ZONE="Europe/Stockholm")
+@pytest.mark.parametrize("name", ["isodate", "isominute"])
+def test_datetime_filters_render_in_the_configured_time_zone(name):
+    moment = datetime(2026, 6, 20, 8, 0, tzinfo=UTC)
+
+    rendered = Template(f"{{% load formatting %}}{{{{ value|{name} }}}}").render(
+        Context({"value": moment})
+    )
+
+    assert rendered == "2026-06-20 10:00"

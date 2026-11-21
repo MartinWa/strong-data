@@ -41,13 +41,20 @@ Check integrity before you need it:
 sqlite3 ./strong-data-$(date +%F).sqlite3 'PRAGMA integrity_check'
 ```
 
-The result should be `ok`; on a host without the `sqlite3` CLI, use the container:
+The result should be `ok`; on a host without the `sqlite3` CLI, use the image you
+deployed. A completed backup needs no recovery, so open it as an immutable
+read-only database: a normal connection would try to create `-wal` and `-shm`
+sidecars next to it and fail with "attempt to write a readonly database" on the
+read-only mount.
 
 ```sh
 docker run --rm -v "$PWD/strong-data-2026-01-05.sqlite3:/backup/backup.sqlite3:ro" \
-  --entrypoint python strong-data:local \
-  -c "import sqlite3; print(sqlite3.connect('/backup/backup.sqlite3').execute('PRAGMA integrity_check').fetchone()[0])"
+  --entrypoint python ghcr.io/martinwa/strong-data:latest -c \
+  "import sqlite3; c = sqlite3.connect('file:/backup/backup.sqlite3?mode=ro&immutable=1', uri=True); print(c.execute('PRAGMA integrity_check').fetchone()[0])"
 ```
+
+Use the tag or digest you deployed, or `strong-data:local` if you build from a
+working copy.
 
 Optionally restore into a separate installation and confirm sessions and exercises
 are present.

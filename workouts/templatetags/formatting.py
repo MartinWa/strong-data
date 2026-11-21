@@ -46,7 +46,7 @@ def kg(value):
     return f"{num(value)} kg"
 
 
-@register.filter
+@register.filter(expects_localtime=True)
 def isominute(value):
     if not value:
         return DASH
@@ -58,7 +58,7 @@ def isominute(value):
         return str(value)
 
 
-@register.filter
+@register.filter(expects_localtime=True)
 def isodate(value, style="auto"):
     if not value:
         return DASH
