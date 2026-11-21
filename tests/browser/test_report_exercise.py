@@ -131,6 +131,49 @@ def test_exercise_with_no_sets_in_range_shows_a_message_not_a_404(client, weight
 def test_report_links_lead_to_the_drill_down(client, weighted_user):
     client.force_login(weighted_user)
     content = client.get(reverse("reports") + "?range=all").content.decode()
-    assert 'href="/reports/exercise/Bench%20Press%20(Barbell)/"' in content
-    response = client.get("/reports/exercise/Bench%20Press%20(Barbell)/")
+    assert (
+        'href="/reports/exercise/Bench%20Press%20(Barbell)/?range=all&amp;metric=volume"' in content
+    )
+    response = client.get("/reports/exercise/Bench%20Press%20(Barbell)/?range=all")
     assert response.status_code == 200
+
+
+def test_drill_down_preserves_filters_in_both_directions(client, weighted_user):
+    client.force_login(weighted_user)
+    response = client.get(reverse("reports") + "?range=all&metric=time&program=Push%20Day")
+    links = [item["url"] for item in response.context["best_lifts"]["strength"]["items"]]
+    assert links
+
+    drill = client.get(links[0])
+    assert drill.status_code == 200
+    assert drill.context["range_key"] == "all"
+    assert drill.context["selected_program"] == "Push Day"
+    assert "range=all" in drill.context["reports_url"]
+    assert "metric=time" in drill.context["reports_url"]
+    assert "program=Push+Day" in drill.context["reports_url"]
+    content = drill.content.decode()
+    assert 'href="/reports/?range=all&amp;metric=time&amp;program=Push+Day"' in content
+    assert 'name="metric" value="time"' in content
+
+    back = client.get(drill.context["reports_url"])
+    assert back.context["range_key"] == "all"
+    assert back.context["metric"] == "time"
+    assert back.context["selected_program"] == "Push Day"
+
+
+def test_single_session_chart_draws_a_marker(client, db):
+    today = timezone.localdate()
+    user = make_user(
+        "single",
+        HEADER + row(today, "Push", "30m", "Bench Press (Barbell)", 1, 80, 5),
+    )
+    client.force_login(user)
+
+    response = client.get(
+        reverse("report_exercise", kwargs={"name": "Bench Press (Barbell)"}) + "?range=4w"
+    )
+    assert response.status_code == 200
+    assert response.context["chart"]["lines"][0]["dots"]
+    content = response.content.decode()
+    assert "chart-dot" in content
+    assert "<circle" in content

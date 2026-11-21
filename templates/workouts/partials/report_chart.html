@@ -23,6 +23,7 @@
   <g class="chart-lines">
     {% for line in chart.lines %}
     <polyline class="chart-line {{ line.class }}" points="{{ line.points }}" fill="none"></polyline>
+    {% for dot in line.dots %}<circle class="chart-dot {{ line.class }}" cx="{{ dot.x }}" cy="{{ dot.y }}" r="3"></circle>{% endfor %}
     {% endfor %}
   </g>
   {% endif %}

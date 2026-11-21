@@ -78,14 +78,15 @@ recorded timings are:
 
 | Step | Seconds |
 | --- | --- |
-| Series, volume, 12 weeks | 0.001 |
-| Series, volume, 1 year | 0.001 |
-| Series, volume, all time (chunked by year) | 0.150 |
-| Muscle totals, all time | 0.233 |
-| Consistency card, all time | 0.029 |
-| Personal bests, all time | 0.179 |
-| Yearly totals | 0.022 |
-| Full page, all time | 1.027 |
+| Series, volume, 12 weeks | 0.006 |
+| Series, volume, 1 year | 0.014 |
+| Series, volume, all time (chunked by year) | 0.147 |
+| Muscle totals, all time | 0.235 |
+| Consistency card, all time | 0.030 |
+| Personal bests, all time | 0.185 |
+| Yearly totals | 0.023 |
+| Full page, 12 weeks | 0.599 |
+| Full page, all time | 0.689 |
 
 Re-run the tool after changing an aggregate; a block that regresses past 1.0 s, or
 a page past 2.5 s, blocks release.

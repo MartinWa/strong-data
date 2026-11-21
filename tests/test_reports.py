@@ -1,4 +1,4 @@
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from decimal import Decimal
 
 import pytest
@@ -12,10 +12,13 @@ from workouts.reports import (
     METRIC_SERIES,
     axis_ticks,
     bar_chart,
+    build_exercise_report,
+    build_report,
     delta,
     line_chart,
     muscle_totals_card,
     nice_max,
+    parse_report_params,
     partial_buckets,
     resolve_range,
     series_for_range,
@@ -403,3 +406,38 @@ def test_muscle_totals_count_a_session_once_per_group():
 
     rows = muscle_totals(user, None, None, None)
     assert rows == [{"key": "Chest", "sessions": 1, "sets": 2, "volume_kg": 150.0}]
+
+
+def test_non_ascii_digit_years_fall_back_to_the_default():
+    assert parse_report_params({"year": "²"})["year"] is None
+    assert parse_report_params({"year": "2026"})["year"] == 2026
+    assert parse_report_params({"year": "12345"})["year"] is None
+    assert parse_report_params({"year": "٢٠٢٦"})["year"] is None
+
+
+@pytest.mark.django_db
+def test_record_dates_and_times_use_the_configured_timezone():
+    user = make_user()
+    session = make_session(user, date(2026, 11, 17), sets=1)
+    exercise = Exercise.objects.create(owner=user, name="Bench")
+    WorkoutSet.objects.create(
+        owner=user,
+        session=session,
+        exercise=exercise,
+        set_order=1,
+        weight_kg=Decimal("80"),
+        reps=5,
+        set_time=datetime(2026, 11, 16, 23, 30, tzinfo=UTC),
+        volume_kg=Decimal("400"),
+        est_1rm_kg=Decimal("93.33"),
+    )
+
+    with timezone.override("Europe/Stockholm"):
+        context = build_report(user, {"range": "all"}, date(2026, 11, 20))
+        item = context["best_lifts"]["strength"]["items"][0]
+        assert "17 Nov" in item["detail"]
+        assert "16 Nov" not in item["detail"]
+
+        drill = build_exercise_report(user, "Bench", {"range": "all"}, date(2026, 11, 20))
+        recorded = drill["record_rows"][0]["set_time"]
+        assert (recorded.day, recorded.hour, recorded.minute) == (17, 0, 30)

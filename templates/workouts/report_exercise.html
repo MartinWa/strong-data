@@ -7,7 +7,7 @@
 {% endblock %}
 {% block content %}
 <div class="page-head report-head">
-  <p class="report-back"><a href="{% url 'reports' %}">← Reports</a></p>
+  <p class="report-back"><a href="{{ reports_url }}">← Reports</a></p>
   <h1>{{ exercise }}</h1>
   <p class="lede">{{ period_label }} · {{ metric_label }}</p>
 </div>
@@ -30,6 +30,8 @@
     </select>
   </div>
   <input type="hidden" name="range" value="{{ range_key }}">
+  <input type="hidden" name="metric" value="{{ metric }}">
+  {% if requested_year %}<input type="hidden" name="year" value="{{ requested_year }}">{% endif %}
   <div class="filters-actions">
     <button class="btn btn-primary btn-sm" type="submit">Apply</button>
   </div>

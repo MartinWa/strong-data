@@ -1648,12 +1648,13 @@ a.pager-page:hover {
 
 .report-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(22rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(22rem, 100%), 1fr));
   gap: 0 1.25rem;
   align-items: start;
 }
 
 .report-card {
+  min-width: 0;
   overflow-wrap: anywhere;
 }
 
@@ -1701,6 +1702,19 @@ a.pager-page:hover {
   stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
+}
+
+.chart-dot {
+  fill: var(--accent);
+  stroke: none;
+}
+
+.chart-dot.series-2 {
+  fill: var(--success);
+}
+
+.chart-dot.series-3 {
+  fill: var(--warning);
 }
 
 .series-1 {

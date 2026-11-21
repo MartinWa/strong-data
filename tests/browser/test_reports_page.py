@@ -1,8 +1,10 @@
 import re
 from datetime import date, timedelta
+from pathlib import Path
 
 import pytest
 from django.contrib.auth import get_user_model
+from django.contrib.staticfiles import finders
 from django.db import connection
 from django.test.utils import CaptureQueriesContext
 from django.urls import reverse
@@ -225,7 +227,9 @@ def test_records_show_prs_first_records_and_drill_down_links(signed_in):
     content = signed_in.get(reverse("reports") + "?range=12w").content.decode()
     assert "NEW PR" in content
     assert "First recorded" in content
-    assert 'href="/reports/exercise/Bench%20Press%20(Barbell)/"' in content
+    assert (
+        'href="/reports/exercise/Bench%20Press%20(Barbell)/?range=12w&amp;metric=volume"' in content
+    )
     assert "Bench Press (Barbell)" in content
     assert "100 kg × 5" in content
 
@@ -269,6 +273,25 @@ def test_data_tables_and_print_attributes(signed_in):
     assert "Cumulative volume by month" in content
     assert "data-print-open" in content
     assert "workouts/print.js" in content
+
+
+def test_yearly_lines_and_legend_share_one_order(signed_in):
+    yearly = signed_in.get(reverse("reports")).context["yearly"]
+    assert [line["label"] for line in yearly["chart"]["lines"]] == [
+        str(year) for year in yearly["drawn"]
+    ]
+
+
+def test_unicode_digit_year_does_not_crash(signed_in):
+    response = signed_in.get(reverse("reports") + "?year=%C2%B2")
+    assert response.status_code == 200
+    assert response.context["yearly"]["focus"] == timezone.localdate().year
+
+
+def test_report_grid_can_shrink_below_its_preferred_width():
+    css = Path(finders.find("workouts/app.css")).read_text(encoding="utf-8")
+    assert "minmax(min(22rem, 100%), 1fr)" in css
+    assert ".report-card {\n  min-width: 0;" in css
 
 
 def test_yearly_current_year_footer_and_past_year_footer(signed_in):

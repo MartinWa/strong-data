@@ -578,3 +578,32 @@ def test_personal_bests_first_record_and_tie(client):
     later = client.get(BASE + "/records/personal-bests?start=2026-03-01&end=2026-03-31").json()
     assert later["items"][0]["is_personal_best"] is True
     assert user.username == "bests"
+
+
+@pytest.mark.django_db
+def test_record_ties_choose_the_most_recent_set(client):
+    make_user(
+        "ties",
+        "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE\n"
+        "2026-01-05 09:00:00,Push,30m,Bench Press,1,80,5,0,0,8.0\n"
+        "2026-02-05 09:00:00,Push,30m,Bench Press,1,80,5,0,0,8.0\n"
+        "2026-01-06 09:00:00,Pull,30m,Pull Up,1,,10,100,10,8.0\n"
+        "2026-02-06 09:00:00,Pull,30m,Pull Up,1,,10,200,20,8.0\n",
+        "ties-secret",
+    )
+    client.defaults["HTTP_AUTHORIZATION"] = "Bearer ties-secret"
+
+    strength = client.get(BASE + "/records/est-1rm").json()["items"]
+    bench = next(row for row in strength if row["exercise"] == "Bench Press")
+    assert bench["set_time"].startswith("2026-02-05")
+
+    bodyweight = client.get(BASE + "/records/bodyweight").json()["items"]
+    pull_up = next(row for row in bodyweight if row["exercise"] == "Pull Up")
+    assert pull_up["set_time"].startswith("2026-02-06")
+    assert (pull_up["seconds"], pull_up["distance"]) == (20.0, 200.0)
+
+    bests = client.get(
+        BASE + "/records/personal-bests?kind=bodyweight&start=2026-01-01&end=2026-12-31"
+    ).json()["items"]
+    pull_best = next(row for row in bests if row["exercise"] == "Pull Up")
+    assert pull_best["set_time"].startswith("2026-02-06")

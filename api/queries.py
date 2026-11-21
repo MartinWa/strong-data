@@ -558,12 +558,12 @@ def _ranked_best_sets(user, start, end, program, kind):
             F("est_1rm_kg").desc(),
             F("reps").desc(),
             F("weight_kg").desc(),
-            F("set_time").asc(),
+            F("set_time").desc(),
             F("set_order").asc(),
         ]
     else:
         queryset = queryset.filter(weight_kg__isnull=True)
-        ordering = [F("reps").desc(), F("set_time").asc(), F("set_order").asc()]
+        ordering = [F("reps").desc(), F("set_time").desc(), F("set_order").asc()]
     return (
         queryset.annotate(
             best_rank=Window(

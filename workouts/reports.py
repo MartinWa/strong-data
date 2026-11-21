@@ -1,9 +1,11 @@
 import calendar
 import math
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
+from urllib.parse import urlencode
 
 from django.db.models import Max, Min
 from django.urls import reverse
+from django.utils import timezone
 
 from api.contract import MAX_RANGE_DAYS
 from api.queries import (
@@ -75,8 +77,26 @@ def parse_report_params(params):
         metric = DEFAULT_METRIC
     program = _get(params, "program")
     raw_year = _get(params, "year")
-    year = int(raw_year) if raw_year.isdigit() and len(raw_year) <= 4 else None
+    year = None
+    if raw_year.isascii() and raw_year.isdigit() and len(raw_year) <= 4:
+        year = int(raw_year)
     return {"range": range_key, "metric": metric, "program": program, "year": year}
+
+
+def filtered_url(path, params):
+    query = {"range": params["range"], "metric": params["metric"]}
+    if params["program"]:
+        query["program"] = params["program"]
+    if params["year"] is not None:
+        query["year"] = str(params["year"])
+    return path + "?" + urlencode(query)
+
+
+def local_datetime(value):
+    parsed = datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    if timezone.is_naive(parsed):
+        parsed = timezone.make_aware(parsed)
+    return timezone.localtime(parsed)
 
 
 def shift_months(value, months):
@@ -385,11 +405,17 @@ def line_chart(lines, *, x_max, x_ticks, y_unit="", aria_label=""):
     for index, line in enumerate(lines):
         if not line["points"]:
             continue
+        projected = [project(x, y) for x, y in line["points"]]
+        dots = []
+        if len(projected) == 1:
+            x, y = projected[0].split(",")
+            dots.append({"x": x, "y": y})
         drawn.append(
             {
                 "label": line["label"],
                 "class": f"series-{index + 1}",
-                "points": " ".join(project(x, y) for x, y in line["points"]),
+                "points": " ".join(projected),
+                "dots": dots,
             }
         )
     tick_positions = [
@@ -759,11 +785,11 @@ def _consistency_card(user, start, end, today, program):
     }
 
 
-def _best_lifts(user, start, end, program, kind):
+def _best_lifts(user, start, end, program, kind, params):
     rows = personal_best_data(user, start, end, program, kind)["items"][:6]
     items = []
     for row in rows:
-        set_date = date.fromisoformat(row["set_time"][:10])
+        set_date = local_datetime(row["set_time"]).date()
         if kind == "strength":
             value = format_kg(row["value"])
             detail = (
@@ -785,7 +811,9 @@ def _best_lifts(user, start, end, program, kind):
                 "value": value,
                 "detail": detail,
                 "badge": badge,
-                "url": reverse("report_exercise", kwargs={"name": row["exercise"]}),
+                "url": filtered_url(
+                    reverse("report_exercise", kwargs={"name": row["exercise"]}), params
+                ),
             }
         )
     return {"kind": kind, "items": items}
@@ -819,7 +847,7 @@ def _yearly_card(user, today, program, requested_year):
         grouped.setdefault(item["year"], []).append(item)
 
     lines = []
-    for year in sorted(drawn):
+    for year in sorted(drawn, reverse=True):
         points = [
             (item["day_of_year"], item["cumulative_volume_kg"] / 1000) for item in grouped[year]
         ]
@@ -982,8 +1010,8 @@ def build_report(user, params, today):
     context["muscle"] = muscle_totals_card(user, start, end, program)
     context["consistency"] = _consistency_card(user, start, end, today, program)
     context["best_lifts"] = {
-        "strength": _best_lifts(user, start, end, program, "strength"),
-        "bodyweight": _best_lifts(user, start, end, program, "bodyweight"),
+        "strength": _best_lifts(user, start, end, program, "strength", parsed),
+        "bodyweight": _best_lifts(user, start, end, program, "bodyweight", parsed),
     }
     context["yearly"] = _yearly_card(user, today, program, parsed["year"])
     return context
@@ -1049,7 +1077,7 @@ def build_exercise_report(user, name, params, today):
             if row["best_est_1rm_kg"] is not None
             else "—",
             "volume": format_kg(row["volume_kg"]),
-            "set_time": row["set_time"],
+            "set_time": local_datetime(row["set_time"]),
         }
         for row in records
     ]
@@ -1061,6 +1089,9 @@ def build_exercise_report(user, name, params, today):
         "range_key": parsed["range"],
         "range": resolved,
         "period_label": resolved["label"],
+        "metric": parsed["metric"],
+        "requested_year": parsed["year"],
+        "reports_url": filtered_url(reverse("reports"), parsed),
         "range_options": [
             {"key": key, "label": RANGE_LABELS[key], "current": key == parsed["range"]}
             for key in RANGE_KEYS

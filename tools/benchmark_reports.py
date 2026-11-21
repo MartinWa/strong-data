@@ -65,11 +65,12 @@ def build_dataset(sessions, sets_per_session):
 
     today = timezone.localdate()
     start = today - timedelta(days=YEARS * 365)
-    spacing = max((today - start).days // sessions, 1)
+    span_days = (today - start).days
     session_rows = []
     set_plans = []
     for index in range(sessions):
-        session_date = start + timedelta(days=index * spacing)
+        day_offset = span_days if sessions == 1 else index * span_days // (sessions - 1)
+        session_date = start + timedelta(days=day_offset)
         session_volume = Decimal(0)
         session_sets = []
         for order in range(1, sets_per_session + 1):
@@ -209,7 +210,14 @@ def run_benchmark(sessions, sets_per_session):
         lambda: pace_data(user, today.year, today, None),
         results,
     )
-    measure("build_report (12w)", lambda: build_report(user, {"range": "12w"}, today), results)
+
+    def recent_page():
+        context = build_report(user, {"range": "12w"}, today)
+        if context.get("range_empty"):
+            raise RuntimeError("benchmark dataset has no sessions in the recent range")
+        return context
+
+    measure("build_report (12w)", recent_page, results)
     measure("build_report (all)", lambda: build_report(user, {"range": "all"}, today), results)
     return results
 
