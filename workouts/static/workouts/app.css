@@ -338,13 +338,19 @@ main.container {
   gap: 0.5rem;
 }
 
+.footer-brand a {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
 .update-indicator {
   display: inline-block;
+  flex: none;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 999px;
   background: var(--accent);
-  vertical-align: middle;
 }
 
 .visually-hidden {
