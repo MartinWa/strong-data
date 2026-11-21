@@ -5,6 +5,13 @@
   </picture>
 </p>
 
+<p align="center">
+  <a href="https://github.com/MartinWa/strong-data/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/MartinWa/strong-data/actions/workflows/ci.yml/badge.svg?branch=main"></a>
+  <a href="https://github.com/MartinWa/strong-data/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/MartinWa/strong-data?label=release"></a>
+  <a href="https://github.com/MartinWa/strong-data/pkgs/container/strong-data"><img alt="Container image on GHCR" src="https://img.shields.io/badge/ghcr.io-strong--data%3Alatest-2496ED?logo=docker&amp;logoColor=white"></a>
+  <a href="LICENSE"><img alt="License: PolyForm Noncommercial 1.0.0" src="https://img.shields.io/badge/license-PolyForm%20Noncommercial%201.0.0-blue"></a>
+</p>
+
 Self-hosted import of your Strong workout CSV into a private SQLite database, with
 a server-rendered web UI and a read-only JSON API.
 
