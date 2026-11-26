@@ -4,9 +4,9 @@ from datetime import date, timedelta
 from decimal import Decimal
 
 from django.db import transaction
-from django.db.models import Count, F, Max, Min, Q, Sum, Window
+from django.db.models import Count, F, Max, Min, OuterRef, Q, Subquery, Sum, Value, Window
 from django.db.models.fields import DateField
-from django.db.models.functions import RowNumber, TruncMonth, TruncWeek, TruncYear
+from django.db.models.functions import Coalesce, RowNumber, TruncMonth, TruncWeek, TruncYear
 from django.utils import timezone
 
 from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
@@ -288,7 +288,7 @@ def _accumulated_series_data(user, metric, bucket, group_by, start, end, moving_
 
     effective_start = start if start is not None else min(dates)
     effective_end = end if end is not None else max(dates)
-    validate_date_range(effective_start, effective_end)
+    validate_date_range(effective_start, effective_end, bucket)
 
     items = []
     values = []
@@ -371,7 +371,7 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
     else:
         effective_start = start
         effective_end = end
-    validate_date_range(effective_start, effective_end)
+    validate_date_range(effective_start, effective_end, bucket)
 
     by_bucket = {row["bucket_value"]: row for row in rows}
     zero = Decimal(0) if metric in {"volume", "training-time"} else 0
@@ -406,30 +406,37 @@ def series_data(user, metric, bucket, group_by, start, end, moving_average, prog
 
 def muscle_totals(user, start, end, program):
     mapping = muscle_map(user)
+    queryset = owned_sets(user, start=start, end=end, program=program)
     exercise_rows = list(
-        owned_sets(user, start=start, end=end, program=program)
-        .values("exercise__name")
+        queryset.values("exercise__name")
         .annotate(sets=Count("id"), volume=Sum("volume_kg"))
         .order_by()
     )
-    totals = defaultdict(lambda: {"sessions": set(), "sets": 0, "volume": Decimal(0)})
+    muscle_group = Coalesce(
+        Subquery(
+            ExerciseMeta.objects.filter(
+                owner=user, exercise_name=OuterRef("exercise__name")
+            ).values("muscle_group")[:1]
+        ),
+        Value("Other"),
+    )
+    session_rows = list(
+        queryset.annotate(muscle=muscle_group)
+        .values("muscle")
+        .annotate(sessions=Count("session_id", distinct=True))
+    )
+    totals = defaultdict(lambda: {"sessions": 0, "sets": 0, "volume": Decimal(0)})
     for row in exercise_rows:
         entry = totals[mapping.get(row["exercise__name"], "Other")]
         entry["sets"] += row["sets"]
         entry["volume"] += row["volume"] or Decimal(0)
-
-    pair_rows = (
-        owned_sets(user, start=start, end=end, program=program)
-        .values("exercise__name", "session_id")
-        .distinct()
-    )
-    for row in pair_rows:
-        totals[mapping.get(row["exercise__name"], "Other")]["sessions"].add(row["session_id"])
+    for row in session_rows:
+        totals[row["muscle"]]["sessions"] = row["sessions"]
 
     rows = [
         {
             "key": key,
-            "sessions": len(entry["sessions"]),
+            "sessions": entry["sessions"],
             "sets": entry["sets"],
             "volume_kg": round2(entry["volume"]),
         }
@@ -450,16 +457,18 @@ def breakdown_data(user, dimension, start, end, limit, program):
         if dimension == "weekday":
             for name in WEEKDAYS:
                 buckets[name]
-        for session in owned_sessions(user, start=start, end=end, program=program):
+        for row in owned_sessions(user, start=start, end=end, program=program).values(
+            "session_date", "program", "set_count", "total_volume_kg"
+        ):
             key = (
-                WEEKDAYS[session.session_date.weekday()]
+                WEEKDAYS[row["session_date"].weekday()]
                 if dimension == "weekday"
-                else session.program
+                else row["program"]
             )
             entry = buckets[key]
             entry["sessions"] += 1
-            entry["sets"] += session.set_count
-            entry["volume"] += session.total_volume_kg
+            entry["sets"] += row["set_count"]
+            entry["volume"] += row["total_volume_kg"]
     else:
         buckets = defaultdict(lambda: {"session_ids": set(), "sets": 0, "volume": Decimal(0)})
         for row in owned_sets(user, start=start, end=end, program=program).values(
@@ -506,27 +515,29 @@ def validate_progress_options(group_by):
 def progress_data(user, name, start, end, group_by, program):
     validate_progress_options(group_by)
     grouped = defaultdict(list)
-    for item in owned_sets(user, start=start, end=end, exercise=name, program=program):
-        key = item.session_id if group_by == "session" else item.session.session_date
-        grouped[key].append(item)
+    for row in owned_sets(user, start=start, end=end, exercise=name, program=program).values(
+        "session_id", "session__session_date", "est_1rm_kg", "weight_kg", "reps", "volume_kg"
+    ):
+        key = row["session_id"] if group_by == "session" else row["session__session_date"]
+        grouped[key].append(row)
 
     ordered = sorted(
         grouped.items(),
-        key=lambda entry: (entry[1][0].session.session_date, entry[0]),
+        key=lambda entry: (entry[1][0]["session__session_date"], entry[0]),
     )
     items = []
     for key, entries in ordered:
-        estimates = [item.est_1rm_kg for item in entries if item.est_1rm_kg is not None]
-        weights = [item.weight_kg for item in entries if item.weight_kg is not None]
+        estimates = [row["est_1rm_kg"] for row in entries if row["est_1rm_kg"] is not None]
+        weights = [row["weight_kg"] for row in entries if row["weight_kg"] is not None]
         items.append(
             {
-                "date": entries[0].session.session_date.isoformat(),
+                "date": entries[0]["session__session_date"].isoformat(),
                 "session_id": key if group_by == "session" else None,
                 "sets": len(entries),
                 "best_est_1rm_kg": round2(max(estimates)) if estimates else None,
                 "top_weight_kg": round2(max(weights)) if weights else None,
-                "max_reps": max(item.reps for item in entries),
-                "volume_kg": round2(sum((item.volume_kg for item in entries), Decimal(0))),
+                "max_reps": max(row["reps"] for row in entries),
+                "volume_kg": round2(sum((row["volume_kg"] for row in entries), Decimal(0))),
             }
         )
     return {"count": len(items), "items": items}
@@ -534,27 +545,29 @@ def progress_data(user, name, start, end, group_by, program):
 
 def exercise_record_data(user, name, start, end, program):
     by_reps = defaultdict(list)
-    for item in owned_sets(user, start=start, end=end, exercise=name, program=program):
-        by_reps[item.reps].append(item)
+    for row in owned_sets(user, start=start, end=end, exercise=name, program=program).values(
+        "reps", "weight_kg", "est_1rm_kg", "set_time", "volume_kg"
+    ):
+        by_reps[row["reps"]].append(row)
 
     items = []
     for reps in sorted(by_reps):
         best = max(
             by_reps[reps],
-            key=lambda item: (
-                item.weight_kg or Decimal(0),
-                item.est_1rm_kg or Decimal(0),
-                item.set_time,
+            key=lambda row: (
+                row["weight_kg"] or Decimal(0),
+                row["est_1rm_kg"] or Decimal(0),
+                row["set_time"],
             ),
         )
         items.append(
             {
                 "reps": reps,
                 "set_count": len(by_reps[reps]),
-                "top_weight_kg": maybe_round2(best.weight_kg),
-                "best_est_1rm_kg": maybe_round2(best.est_1rm_kg),
-                "volume_kg": round2(best.volume_kg),
-                "set_time": timestamp(best.set_time),
+                "top_weight_kg": maybe_round2(best["weight_kg"]),
+                "best_est_1rm_kg": maybe_round2(best["est_1rm_kg"]),
+                "volume_kg": round2(best["volume_kg"]),
+                "set_time": timestamp(best["set_time"]),
             }
         )
     return {"count": len(items), "items": items}
@@ -673,12 +686,14 @@ def personal_best_data(user, start, end, program, kind=None):
 
 def yearly_data(user, program):
     buckets = defaultdict(lambda: {"sessions": 0, "sets": 0, "volume": Decimal(0), "duration": 0})
-    for session in owned_sessions(user, program=program):
-        entry = buckets[session.session_date.year]
+    for row in owned_sessions(user, program=program).values(
+        "session_date", "set_count", "total_volume_kg", "duration_min"
+    ):
+        entry = buckets[row["session_date"].year]
         entry["sessions"] += 1
-        entry["sets"] += session.set_count
-        entry["volume"] += session.total_volume_kg
-        entry["duration"] += session.duration_min or 0
+        entry["sets"] += row["set_count"]
+        entry["volume"] += row["total_volume_kg"]
+        entry["duration"] += row["duration_min"] or 0
 
     items = []
     for year in sorted(buckets):

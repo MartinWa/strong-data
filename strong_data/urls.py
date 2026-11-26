@@ -1,10 +1,22 @@
 from django.contrib import admin
 from django.contrib.auth.views import LogoutView
 from django.urls import include, path
+from django.views.defaults import bad_request as django_bad_request
 
+from api.contract import error_response
 from api.urls import api
 from strong_data.views import LoginView, release_status
 
+
+def bad_request(request, exception=None):
+    if request.path.startswith("/api/"):
+        response = error_response(400, "bad_request", "Bad request")
+        response["Cache-Control"] = "no-store"
+        return response
+    return django_bad_request(request, exception=exception)
+
+
+handler400 = bad_request
 handler404 = "strong_data.views.not_found"
 handler500 = "strong_data.views.server_error"
 

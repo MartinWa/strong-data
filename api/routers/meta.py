@@ -1,14 +1,20 @@
 from ninja import Router
 
-from ..contract import envelope
+from workouts.models import WorkoutSession
+
+from ..contract import ServiceUnavailableError, envelope
 from ..params import NoQuery, StrictQuery
 from ..schemas import HealthOut, MeOut
 
 router = Router()
 
 
-@router.get("/healthz", auth=None, response=HealthOut, tags=["meta"], summary="Liveness probe")
+@router.get("/healthz", auth=None, response=HealthOut, tags=["meta"], summary="Readiness probe")
 def healthz(request, query: NoQuery = StrictQuery(None)):
+    try:
+        WorkoutSession.objects.values("id").first()
+    except Exception as exc:
+        raise ServiceUnavailableError() from exc
     return {**envelope(), "status": "ok"}
 
 

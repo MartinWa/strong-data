@@ -12,7 +12,7 @@ jobs:
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.repository == 'MartinWa/strong-data'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
@@ -42,6 +42,42 @@ jobs:
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Wait for both CI jobs on the PR head
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          deadline=$((SECONDS + 480))
+          run_id=""
+          while true; do
+            if [[ -z "$run_id" ]]; then
+              run_id=$(gh run list --commit "$PR_HEAD_SHA" --json databaseId,workflowName \
+                --jq '[.[] | select(.workflowName == "CI")] | max_by(.databaseId) | .databaseId // empty')
+            fi
+            if [[ -n "$run_id" ]]; then
+              jobs=$(gh api "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=100" \
+                --jq '[.jobs[] | select(.name == "Checks (Linux)" or .name == "Container (Linux)")]')
+              state=$(jq -r 'if length < 2 then "waiting"
+                elif all(.[]; .status == "completed" and (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped")) then "ok"
+                elif any(.[]; .status == "completed" and .conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") then "failed"
+                else "waiting" end' <<< "$jobs")
+              if [[ "$state" == "ok" ]]; then
+                echo "Both CI jobs in run $run_id on $PR_HEAD_SHA concluded successfully."
+                exit 0
+              fi
+              if [[ "$state" == "failed" ]]; then
+                echo "A CI job in run $run_id on $PR_HEAD_SHA failed." >&2
+                exit 1
+              fi
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Timed out waiting for the CI run on $PR_HEAD_SHA." >&2
+              exit 1
+            fi
+            sleep 20
+          done
       - name: Enable auto-merge for patch updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
         env:

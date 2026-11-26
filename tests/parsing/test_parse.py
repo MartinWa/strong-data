@@ -4,6 +4,7 @@ from decimal import Decimal
 
 import pytest
 
+import parsing.csv_parser as csv_parser
 from parsing import (
     InvalidCSVError,
     classify_muscle,
@@ -13,6 +14,7 @@ from parsing import (
     parse_workouts,
     program_name,
 )
+from parsing.csv_parser import MAX_IMPORT_ROWS
 
 HEADER = "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE"
 
@@ -283,4 +285,52 @@ def test_csv_reader_errors_become_invalid_csv_error(small_field_limit):
     text = csv_text("2026-01-05 08:00:00,Push,54m,Very Long Exercise Name,1,80,5,0,0,8")
 
     with pytest.raises(InvalidCSVError, match="Invalid CSV"):
+        parse_workouts(text)
+
+
+def test_import_row_limit_is_100_000():
+    assert MAX_IMPORT_ROWS == 100_000
+
+
+def test_parse_workouts_accepts_exactly_the_row_limit(monkeypatch):
+    monkeypatch.setattr(csv_parser, "MAX_IMPORT_ROWS", 3)
+    text = csv_text(
+        "2026-01-05 08:00:00,Push,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:01:00,Push,54m,Bench,2,80,5,0,0,8",
+        "2026-01-05 08:02:00,Push,54m,Bench,3,80,5,0,0,8",
+    )
+
+    assert parse_workouts(text).sessions[0].set_count == 3
+
+
+def test_parse_workouts_rejects_rows_beyond_the_limit(monkeypatch):
+    monkeypatch.setattr(csv_parser, "MAX_IMPORT_ROWS", 3)
+    text = csv_text(
+        "2026-01-05 08:00:00,Push,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:01:00,Push,54m,Bench,2,80,5,0,0,8",
+        "2026-01-05 08:02:00,Push,54m,Bench,3,80,5,0,0,8",
+        "2026-01-05 08:03:00,Push,54m,Bench,4,80,5,0,0,8",
+    )
+
+    with pytest.raises(InvalidCSVError, match="CSV export exceeds the 3-row limit"):
+        parse_workouts(text)
+
+
+def test_parse_workouts_counts_skipped_rows_toward_the_limit(monkeypatch):
+    monkeypatch.setattr(csv_parser, "MAX_IMPORT_ROWS", 2)
+    text = csv_text(
+        "not-a-date,Push,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:00:00,Push,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:01:00,Push,54m,Bench,2,80,5,0,0,8",
+    )
+
+    with pytest.raises(InvalidCSVError, match="CSV export exceeds the 2-row limit"):
+        parse_workouts(text)
+
+
+def test_parse_workouts_rejects_more_than_100_000_rows():
+    row = "2026-01-05 08:00:00,Push,54m,Bench,1,80,5,0,0,8"
+    text = HEADER + "\n" + "\n".join([row] * (MAX_IMPORT_ROWS + 1)) + "\n"
+
+    with pytest.raises(InvalidCSVError, match="CSV export exceeds the 100,000-row limit"):
         parse_workouts(text)

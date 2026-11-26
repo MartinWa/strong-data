@@ -8,7 +8,7 @@ import subprocess
 import time
 from pathlib import Path
 
-STABLE_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.([0-9][0-9]*)")
+STABLE_VERSION = re.compile(r"(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)")
 EXPECTED_CI_JOBS = {"Checks (Linux)", "Container (Linux)"}
 CI_POLL_SECONDS = 20
 CI_WAIT_SECONDS = 900

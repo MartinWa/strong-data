@@ -31,6 +31,9 @@ BAD_SUFFIXES = (
 BAD_DIRECTORIES = frozenset({"planning", "reference"})
 MAX_SCAN_BYTES = 2 * 1024 * 1024
 ALLOW_MARKER = "hygiene: allow"
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+PNG_METADATA_CHUNKS = frozenset({b"tEXt", b"iTXt", b"zTXt", b"eXIf"})
+JPEG_EXIF_MARKER = b"Exif\x00\x00"
 
 CONTENT_PATTERNS = (
     ("private key block", re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----")),
@@ -38,12 +41,20 @@ CONTENT_PATTERNS = (
     ("GitHub token", re.compile(r"gh[pousr]_[A-Za-z0-9]{36,}")),
     ("Slack token", re.compile(r"xox[baprs]-[A-Za-z0-9-]{10,}")),
     (
+        "assigned secret",
+        re.compile(
+            r"(?i)\b(secret[_-]?key|api[_-]?key|token|password)\b\s*[:=]\s*[\"'][A-Za-z0-9_\-/+]{32,}[\"']"
+        ),
+    ),
+    (
         "email address",
         re.compile(r"[A-Za-z0-9._%+-]+@(?!example\.(?:com|org|net)\b)[A-Za-z0-9.-]+\.[A-Za-z]{2,}"),
     ),
     (
         "absolute host path",
-        re.compile(r"(?:[A-Za-z]:\\Users\\|/Users/[A-Za-z]|/home/(?!developer\b)[A-Za-z])"),
+        re.compile(
+            r"(?:[A-Za-z]:\\Users\\|/Users/[A-Za-z]|/home/(?!developer\b)[A-Za-z]|/(?:root|srv|mnt)/)"
+        ),
     ),
 )
 
@@ -64,14 +75,45 @@ def find_violations(paths: Iterable[str]) -> list[str]:
     return sorted(path for path in paths if is_violation(path))
 
 
+def png_metadata_chunks(data: bytes) -> list[str]:
+    chunks = []
+    offset = len(PNG_SIGNATURE)
+    while offset + 8 <= len(data):
+        length = int.from_bytes(data[offset : offset + 4], "big")
+        chunk_type = data[offset + 4 : offset + 8]
+        if chunk_type in PNG_METADATA_CHUNKS:
+            chunks.append(chunk_type.decode("latin-1"))
+        offset += 12 + length
+        if chunk_type == b"IEND":
+            break
+    return chunks
+
+
 def content_violations(paths: Iterable[str]) -> list[str]:
     findings = []
     for path in paths:
         candidate = Path(path)
+        name = candidate.name.lower()
         try:
-            if candidate.stat().st_size > MAX_SCAN_BYTES:
+            if name.endswith(".png"):
+                data = candidate.read_bytes()
+                if data.startswith(PNG_SIGNATURE):
+                    for chunk in png_metadata_chunks(data):
+                        findings.append(f"{path}: PNG {chunk} metadata chunk")
                 continue
-            text = candidate.read_text(encoding="utf-8")
+            if name.endswith((".jpg", ".jpeg")):
+                if JPEG_EXIF_MARKER in candidate.read_bytes():
+                    findings.append(f"{path}: JPEG Exif metadata")
+                continue
+            size = candidate.stat().st_size
+            if size <= MAX_SCAN_BYTES:
+                text = candidate.read_text(encoding="utf-8")
+            else:
+                with candidate.open("rb") as handle:
+                    head = handle.read(MAX_SCAN_BYTES)
+                    handle.seek(size - MAX_SCAN_BYTES)
+                    tail = handle.read(MAX_SCAN_BYTES)
+                text = (head + tail).decode("utf-8", errors="ignore")
         except OSError, UnicodeDecodeError:
             continue
         for line_number, line in enumerate(text.splitlines(), start=1):

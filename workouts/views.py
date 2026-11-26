@@ -8,7 +8,7 @@ from urllib.parse import urlencode
 from django.contrib import messages
 from django.contrib.auth.decorators import login_required
 from django.core.paginator import Paginator
-from django.db import IntegrityError, transaction
+from django.db import IntegrityError, OperationalError, transaction
 from django.db.models import Count, Q
 from django.forms import modelformset_factory
 from django.http import Http404
@@ -161,6 +161,11 @@ def preview(request):
             messages.error(request, str(exc))
             _discard_pending(request, import_id)
             return redirect("upload")
+        except OperationalError as exc:
+            if "lock" not in str(exc).lower():
+                raise
+            messages.error(request, "The database was busy, please try again")
+            return redirect("preview")
         _discard_pending(request, import_id)
         messages.success(
             request,
@@ -365,13 +370,10 @@ def tokens(request):
         if form.is_valid():
             try:
                 with transaction.atomic():
-                    secret = secrets.token_urlsafe(32)
                     created_name = form.cleaned_data["name"]
-                    ApiToken.objects.create(
+                    _token, secret = ApiToken.generate(
                         owner=request.user,
                         name=created_name,
-                        key_hash=hashlib.sha256(secret.encode()).hexdigest(),
-                        prefix=secret[:8],
                         expires_at=form.cleaned_data["expires_at"],
                     )
             except IntegrityError:

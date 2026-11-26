@@ -5,6 +5,7 @@ from django.contrib.auth import get_user_model
 
 from api.contract import CONTRACT_VERSION
 from tests.api.conftest import make_user
+from tests.api.test_guards import assert_error
 from workouts.models import ApiToken
 
 BASE = "/api/v1"
@@ -100,6 +101,36 @@ def test_series_other_metrics(auth):
 
     training = auth.get(BASE + "/series/training-time?bucket=month").json()
     assert [item["value"] for item in training["items"]] == [1.93, 0.75]
+
+
+def test_series_date_range_cap_scales_with_the_bucket(auth):
+    long_range = "start=2010-01-01&end=2026-01-01"
+
+    monthly = auth.get(BASE + f"/series/sessions?bucket=month&{long_range}")
+    assert monthly.status_code == 200, monthly.content[:300]
+    body = monthly.json()
+    assert body["count"] == 193
+    assert body["items"][0]["bucket_start"] == "2010-01-01"
+    assert body["items"][-1]["bucket_start"] == "2026-01-01"
+
+    yearly = auth.get(BASE + f"/series/sessions?bucket=year&{long_range}").json()
+    assert yearly["count"] == 17
+
+    weekly = auth.get(BASE + f"/series/sessions?bucket=week&{long_range}")
+    assert weekly.status_code == 200, weekly.content[:300]
+    assert len(weekly.json()["items"]) > 193
+
+    assert_error(
+        auth.get(BASE + f"/series/sessions?bucket=day&{long_range}"), 422, "validation_error"
+    )
+    assert_error(
+        auth.get(BASE + "/series/sessions?bucket=week&start=1900-01-01&end=2026-01-01"),
+        422,
+        "validation_error",
+    )
+    assert_error(
+        auth.get(BASE + "/summary?start=2010-01-01&end=2020-01-01"), 422, "validation_error"
+    )
 
 
 def test_breakdowns(auth):

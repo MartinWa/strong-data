@@ -2,10 +2,12 @@ import json
 from io import BytesIO
 
 import pytest
+from django.contrib.auth import get_user_model
 from django.core.cache import cache
 from django.urls import reverse
 
 from strong_data import releases
+from strong_data.version import app_version
 from tools import publish_release
 
 
@@ -199,7 +201,10 @@ def test_latest_version_survives_an_offline_installation(monkeypatch):
     assert releases.latest_version() is None
 
 
-def test_release_status_returns_json(client, monkeypatch):
+@pytest.mark.django_db
+def test_release_status_returns_json_for_a_signed_in_user(client, monkeypatch):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
     monkeypatch.setattr("strong_data.views.update_available", lambda: True)
 
     response = client.get(reverse("release_status"))
@@ -209,7 +214,19 @@ def test_release_status_returns_json(client, monkeypatch):
     assert "no-store" in response.headers["Cache-Control"]
 
 
+@pytest.mark.django_db
+def test_release_status_redirects_anonymous_visitors_to_login(client):
+    response = client.get(reverse("release_status"))
+
+    assert response.status_code == 302
+    assert response.headers["Location"].startswith("/accounts/login/")
+
+
+@pytest.mark.django_db
 def test_release_status_rejects_post(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
     response = client.post(reverse("release_status"))
 
     assert response.status_code == 405
@@ -224,3 +241,20 @@ def test_footer_links_the_version_and_the_repository(client):
     assert releases.REPOSITORY_URL in body
     assert "GitHub" in body
     assert "Update available" in body
+
+
+@pytest.mark.django_db
+def test_footer_hides_the_version_from_anonymous_visitors(client):
+    body = client.get(reverse("login")).content.decode()
+
+    assert app_version() not in body
+
+
+@pytest.mark.django_db
+def test_footer_shows_the_version_when_signed_in(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    body = client.get(reverse("sessions")).content.decode()
+
+    assert app_version() in body

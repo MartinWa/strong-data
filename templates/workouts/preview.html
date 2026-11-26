@@ -13,7 +13,7 @@
 <div class="stat-grid">
   <div class="stat">
     <span class="stat-label">Sessions</span>
-    <span class="stat-value">{{ summary.sessions|length }}</span>
+    <span class="stat-value">{{ summary.session_total }}</span>
   </div>
   <div class="stat">
     <span class="stat-label">Sets</span>
@@ -57,10 +57,10 @@
 <div class="card">
   <div class="card-head">
     <h2>Sessions</h2>
-    <span class="badge">{{ summary.sessions|length }}</span>
+    <span class="badge">{{ summary.session_total }}</span>
   </div>
-  {% if summary.sessions|length > 10 %}
-  <p class="muted small">Showing the first 10 of {{ summary.sessions|length }} sessions.</p>
+  {% if summary.session_total > summary.sessions|length %}
+  <p class="muted small">Showing the newest {{ summary.sessions|length }} of {{ summary.session_total }} sessions.</p>
   {% endif %}
   <div class="table-wrap">
     <table class="table">
@@ -69,30 +69,12 @@
         {% include "workouts/partials/preview_session_head.html" %}
       </thead>
       <tbody>
-        {% for session in summary.sessions|slice:":10" %}
+        {% for session in summary.sessions %}
         {% include "workouts/partials/preview_session_row.html" %}
         {% endfor %}
       </tbody>
     </table>
   </div>
-  {% if summary.sessions|length > 10 %}
-  <details class="show-all">
-    <summary>Show all {{ summary.sessions|length }} sessions</summary>
-    <div class="table-wrap">
-      <table class="table">
-        <caption class="visually-hidden">Remaining sessions in this export</caption>
-        <thead>
-          {% include "workouts/partials/preview_session_head.html" %}
-        </thead>
-        <tbody>
-          {% for session in summary.sessions %}{% if forloop.counter > 10 %}
-          {% include "workouts/partials/preview_session_row.html" %}
-          {% endif %}{% endfor %}
-        </tbody>
-      </table>
-    </div>
-  </details>
-  {% endif %}
 </div>
 
 <div class="card">

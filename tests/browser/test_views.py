@@ -68,16 +68,27 @@ def small_field_limit():
 
 
 @pytest.mark.django_db
-def test_footer_shows_version_and_github_links(client):
+def test_footer_hides_version_when_anonymous(client):
     response = client.get(reverse("login"))
     content = response.content.decode()
 
     assert response.status_code == 200
-    assert app_version() in content
+    assert app_version() not in content
     assert 'href="https://github.com/' in content
     assert "/api/v1/docs" not in content
     assert "/api/v1/healthz" not in content
     assert "api-reference" not in content
+
+
+@pytest.mark.django_db
+def test_footer_shows_version_and_github_links_when_logged_in(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    content = client.get(reverse("sessions")).content.decode()
+
+    assert app_version() in content
+    assert 'href="https://github.com/' in content
 
 
 @pytest.mark.django_db
@@ -91,10 +102,20 @@ def test_footer_links_api_reference_when_logged_in(client):
     assert "/api/v1/healthz" not in content
 
 
-def test_footer_version_links_to_releases(client):
-    content = client.get(reverse("login")).content.decode()
+@pytest.mark.django_db
+def test_footer_version_links_to_releases_when_logged_in(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    client.force_login(user)
+
+    content = client.get(reverse("sessions")).content.decode()
 
     assert re.search(rf'<a href="[^"]*/releases[^"]*"[^>]*>\s*{re.escape(app_version())}', content)
+
+
+def test_footer_hides_release_version_link_when_anonymous(client):
+    content = client.get(reverse("login")).content.decode()
+
+    assert not re.search(rf'/releases[^"]*"[^>]*>\s*{re.escape(app_version())}', content)
 
 
 def test_password_toggle_is_an_icon_button(client):

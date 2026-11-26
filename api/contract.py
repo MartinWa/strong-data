@@ -9,9 +9,15 @@ logger = logging.getLogger("django")
 
 CONTRACT_VERSION = "1.0"
 MAX_RANGE_DAYS = 1830
+BUCKET_RANGE_FACTORS = {"day": 1, "week": 7, "month": 31, "year": 366}
 MAX_LIMIT = 1000
 MAX_BODY_BYTES = 10 * 1024 * 1024
 API_PREFIX = "/api/v1/"
+
+
+def max_range_days(bucket=None):
+    return MAX_RANGE_DAYS * BUCKET_RANGE_FACTORS.get(bucket, 1)
+
 
 STATUS_CODES = {
     400: ("bad_request", "Bad request"),

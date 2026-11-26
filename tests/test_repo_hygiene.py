@@ -1,7 +1,15 @@
 import re
+import struct
+import zlib
 from pathlib import Path
 
-from tools.check_no_private_data import candidate_files, content_violations, find_violations
+from tools.check_no_private_data import (
+    MAX_SCAN_BYTES,
+    candidate_files,
+    content_violations,
+    find_violations,
+)
+from tools.publish_release import version_number
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -273,5 +281,115 @@ def test_content_scan_honours_the_allow_marker(tmp_path):
     assert content_violations([str(sample)]) == []
 
 
+def test_content_scan_flags_assigned_secrets(tmp_path):
+    sample = tmp_path / "settings.py"
+    long_value = "Abcdefghijklmnopqrstuvwxyz" + "0123456"
+    sample.write_text(f'SECRET_KEY = "{long_value}"\n', encoding="utf-8")
+
+    assert content_violations([str(sample)]) == [f"{sample}:1: assigned secret"]
+
+
+def test_content_scan_allows_example_and_test_env_values(tmp_path):
+    sample = tmp_path / "example.env"
+    sample.write_text(
+        "STRONG_SECRET_KEY=replace-with-a-long-random-value\n"
+        'os.environ["STRONG_SECRET_KEY"] = "test-only-secret-key-never-for-runtime-000000000000"\n'
+        'PASSWORD = "short"\n',
+        encoding="utf-8",
+    )
+
+    assert content_violations([str(sample)]) == []
+
+
+def test_content_scan_flags_more_absolute_host_paths(tmp_path):
+    sample = tmp_path / "notes.md"
+    host_path = "D:" + "\\Users\\someone\\export.csv"
+    sample.write_text(
+        "/" + "root/secret\n" + "/" + "srv/app\n" + "/" + "mnt/disk\n" + host_path + "\n",
+        encoding="utf-8",
+    )
+
+    assert content_violations([str(sample)]) == [
+        f"{sample}:{line}: absolute host path" for line in (1, 2, 3, 4)
+    ]
+
+
+def _png_bytes(*extra_chunks: bytes) -> bytes:
+    def chunk(chunk_type: bytes, payload: bytes) -> bytes:
+        crc = zlib.crc32(chunk_type + payload) & 0xFFFFFFFF
+        return len(payload).to_bytes(4, "big") + chunk_type + payload + crc.to_bytes(4, "big")
+
+    body = chunk(b"IHDR", struct.pack(">IIBBBBB", 1, 1, 8, 0, 0, 0, 0))
+    body += chunk(b"IDAT", zlib.compress(b"\x00"))
+    for chunk_type in extra_chunks:
+        body += chunk(chunk_type, b"Comment\x00hello")
+    return b"\x89PNG\r\n\x1a\n" + body + chunk(b"IEND", b"")
+
+
+def test_content_scan_flags_png_metadata_chunks(tmp_path):
+    for chunk_type in (b"tEXt", b"iTXt", b"zTXt", b"eXIf"):
+        sample = tmp_path / f"image-{chunk_type.decode('latin-1')}.png"
+        sample.write_bytes(_png_bytes(chunk_type))
+
+        assert content_violations([str(sample)]) == [
+            f"{sample}: PNG {chunk_type.decode('latin-1')} metadata chunk"
+        ]
+
+
+def test_content_scan_allows_png_image_data_only(tmp_path):
+    sample = tmp_path / "image.png"
+    sample.write_bytes(_png_bytes())
+
+    assert content_violations([str(sample)]) == []
+
+
+def test_content_scan_flags_jpeg_exif_metadata(tmp_path):
+    sample = tmp_path / "photo.jpg"
+    sample.write_bytes(b"\xff\xd8\xff\xe1\x00\x10Exif\x00\x00" + b"\x00" * 8 + b"\xff\xd9")
+
+    assert content_violations([str(sample)]) == [f"{sample}: JPEG Exif metadata"]
+
+
+def test_content_scan_allows_jpeg_without_exif(tmp_path):
+    sample = tmp_path / "photo.jpeg"
+    sample.write_bytes(b"\xff\xd8\xff\xe0\x00\x10JFIF\x00" + b"\x00" * 8 + b"\xff\xd9")
+
+    assert content_violations([str(sample)]) == []
+
+
+def test_content_scan_reads_the_head_and_tail_of_large_files(tmp_path):
+    email = "real.person" + "@" + "corp.example"
+    filler = ("a" * 60 + "\n") * (MAX_SCAN_BYTES // 61 + 10)
+    head_sample = tmp_path / "head.log"
+    head_sample.write_text(f"contact {email}\n" + filler, encoding="utf-8")
+    tail_sample = tmp_path / "tail.log"
+    tail_sample.write_text(filler + f"contact {email}\n", encoding="utf-8")
+
+    assert content_violations([str(head_sample)]) == [f"{head_sample}:1: email address"]
+    tail_findings = content_violations([str(tail_sample)])
+    assert len(tail_findings) == 1
+    _, tail_line, tail_label = tail_findings[0].rsplit(":", 2)
+    assert int(tail_line) > 1
+    assert tail_label == " email address"
+
+
 def test_repository_content_is_clean():
     assert content_violations(candidate_files()) == []
+
+
+def test_repository_tracks_no_private_data_files():
+    assert find_violations(candidate_files()) == []
+
+
+def test_ignore_files_exclude_the_private_directories():
+    for ignore_file in (".gitignore", ".dockerignore"):
+        lines = (REPO_ROOT / ignore_file).read_text(encoding="utf-8").splitlines()
+        assert "planning/" in lines
+        assert "reference/" in lines
+
+
+def test_release_script_rejects_leading_zeros_in_stable_tags():
+    assert version_number("1.2.3") == (1, 2, 3)
+    assert version_number("0.0.0") == (0, 0, 0)
+    assert version_number("01.2.3") is None
+    assert version_number("1.2.03") is None

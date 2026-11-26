@@ -1,13 +1,17 @@
 import os
-from pathlib import Path
+import sys
 
-from django.conf import settings
-from django.core.management import call_command
-from waitress import serve
+os.umask(0o077)
 
-from strong_data.wsgi import application
-from workouts import pending
-from workouts.limits import MAX_REQUEST_BODY_BYTES
+from pathlib import Path  # noqa: E402
+
+from django.conf import settings  # noqa: E402
+from django.core.management import call_command  # noqa: E402
+from waitress import serve  # noqa: E402
+
+from strong_data.wsgi import application  # noqa: E402
+from workouts import pending  # noqa: E402
+from workouts.limits import MAX_REQUEST_BODY_BYTES  # noqa: E402
 
 TRUSTED_PROXY = os.environ.get("STRONG_TRUSTED_PROXY", "").strip() or None
 PORT = int(os.environ.get("STRONG_PORT", "8000"))
@@ -18,6 +22,15 @@ if TRUSTED_PROXY is None:
         "app is reachable only from a trusted container network. The example .env file "
         "ships *. Without it the proxy's X-Forwarded-Proto header is ignored and HTTPS "
         "form submissions fail CSRF checks."
+    )
+
+if TRUSTED_PROXY == "*" and os.environ.get("STRONG_HOST_PORT", "").strip():
+    print(
+        "WARNING: STRONG_TRUSTED_PROXY=* trusts X-Forwarded-* headers from every client "
+        "that can reach the port, and STRONG_HOST_PORT publishes that port on the host. "
+        "Publish it on 127.0.0.1 only (never 0.0.0.0), or set STRONG_TRUSTED_PROXY to the "
+        "proxy's own address instead of *.",
+        file=sys.stderr,
     )
 
 
