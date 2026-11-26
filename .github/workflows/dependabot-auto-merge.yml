@@ -50,26 +50,30 @@ jobs:
           PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         run: |
           deadline=$((SECONDS + 480))
+          run_id=""
           while true; do
-            jobs=$(gh api --paginate "repos/$GH_REPO/commits/$PR_HEAD_SHA/check-runs?per_page=100" \
-              --jq '[.check_runs[]
-                | select(.name == "Checks (Linux)" or .name == "Container (Linux)")
-                | {name, status, conclusion, run_attempt}]
-               | group_by(.name) | map(max_by(.run_attempt))')
-            state=$(jq -r 'if length < 2 then "waiting"
-              elif all(.[]; .status == "completed" and (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped")) then "ok"
-              elif any(.[]; .status == "completed" and .conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") then "failed"
-              else "waiting" end' <<< "$jobs")
-            if [[ "$state" == "ok" ]]; then
-              echo "Both CI jobs on $PR_HEAD_SHA concluded successfully."
-              exit 0
+            if [[ -z "$run_id" ]]; then
+              run_id=$(gh run list --commit "$PR_HEAD_SHA" --json databaseId,workflowName \
+                --jq '[.[] | select(.workflowName == "CI")] | max_by(.databaseId) | .databaseId // empty')
             fi
-            if [[ "$state" == "failed" ]]; then
-              echo "A CI job on $PR_HEAD_SHA failed." >&2
-              exit 1
+            if [[ -n "$run_id" ]]; then
+              jobs=$(gh api "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=100" \
+                --jq '[.jobs[] | select(.name == "Checks (Linux)" or .name == "Container (Linux)")]')
+              state=$(jq -r 'if length < 2 then "waiting"
+                elif all(.[]; .status == "completed" and (.conclusion == "success" or .conclusion == "neutral" or .conclusion == "skipped")) then "ok"
+                elif any(.[]; .status == "completed" and .conclusion != "success" and .conclusion != "neutral" and .conclusion != "skipped") then "failed"
+                else "waiting" end' <<< "$jobs")
+              if [[ "$state" == "ok" ]]; then
+                echo "Both CI jobs in run $run_id on $PR_HEAD_SHA concluded successfully."
+                exit 0
+              fi
+              if [[ "$state" == "failed" ]]; then
+                echo "A CI job in run $run_id on $PR_HEAD_SHA failed." >&2
+                exit 1
+              fi
             fi
             if (( SECONDS >= deadline )); then
-              echo "Timed out waiting for CI jobs on $PR_HEAD_SHA." >&2
+              echo "Timed out waiting for the CI run on $PR_HEAD_SHA." >&2
               exit 1
             fi
             sleep 20
