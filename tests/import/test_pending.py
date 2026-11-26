@@ -1,6 +1,7 @@
 import os
 import threading
 import time
+from datetime import date, timedelta
 from io import StringIO
 
 import pytest
@@ -259,13 +260,13 @@ def test_summarize_orders_sessions_newest_first_like_the_sessions_page():
         "2026-01-05",
     ]
     assert [session["workout_name"] for session in summary["sessions"]][1:] == [
-        "Push Day",
         "Legs Day",
+        "Push Day",
     ]
     assert [group["exercise_name"] for group in summary["sample_groups"]] == [
         "Barbell Row",
-        "Bench Press (Barbell)",
         "Back Squat",
+        "Bench Press (Barbell)",
     ]
     assert [group["session_date"] for group in summary["sample_groups"]] == [
         "2026-02-10",
@@ -278,6 +279,42 @@ def test_summarize_orders_sessions_newest_first_like_the_sessions_page():
         True,
     ]
     assert summary["sample_set_count"] == 3
+
+
+def test_summarize_orders_same_date_sessions_by_workout_name_ascending():
+    rows = [
+        "2026-01-05 18:00:00,Zebra,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 09:00:00,Alpha,54m,Bench,1,80,5,0,0,8",
+    ]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert [session["workout_name"] for session in summary["sessions"]] == ["Alpha", "Zebra"]
+
+
+def test_summarize_keeps_only_the_newest_sessions_in_the_preview_list():
+    start = date(2026, 1, 1)
+    rows = [
+        f"{(start + timedelta(days=offset)).isoformat()} 09:00:00,Push Day,54m,Bench,1,80,5,0,0,8"
+        for offset in range(pending.PREVIEW_SESSION_LIMIT + 5)
+    ]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert len(summary["sessions"]) == pending.PREVIEW_SESSION_LIMIT == 200
+    assert summary["session_total"] == 205
+    assert summary["sessions"][0]["date"] == "2026-07-24"
+    assert summary["sessions"][-1]["date"] == "2026-01-06"
+    assert summary["total_sets"] == 205
+
+
+def test_summarize_reports_the_true_session_total_under_the_cap():
+    rows = ["2026-01-05 09:00:00,Push Day,54m,Bench Press,1,80,5,0,0,8"]
+
+    summary = pending.summarize(parse_workouts(csv_text(*rows)))
+
+    assert len(summary["sessions"]) == 1
+    assert summary["session_total"] == 1
 
 
 def test_summarize_groups_warnings_by_cause_with_counts():

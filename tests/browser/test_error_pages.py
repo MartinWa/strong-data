@@ -72,7 +72,8 @@ def test_500_handler_does_not_evaluate_authentication(rf):
 
     assert response.status_code == 500
     assert b"Something went wrong" in response.content
-    assert app_version().encode() in response.content
+    assert b"GitHub" in response.content
+    assert app_version().encode() not in response.content
 
 
 def test_500_does_not_claim_that_nothing_was_written(rf):

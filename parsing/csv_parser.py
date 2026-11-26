@@ -15,6 +15,7 @@ REQUIRED_HEADERS = frozenset(
 )
 MAX_TEXT_LENGTH = 255
 MAX_INT_VALUE = 2_147_483_647
+MAX_IMPORT_ROWS = 100_000
 FIELD_DIGITS = {
     "weight": (8, 2),
     "distance": (8, 2),
@@ -231,7 +232,11 @@ def parse_workouts(text: str) -> ParsedWorkouts:
     exercises: set[str] = set()
     warnings: list[str] = []
 
+    row_count = 0
     for row in _read_rows(reader):
+        row_count += 1
+        if row_count > MAX_IMPORT_ROWS:
+            raise InvalidCSVError(f"CSV export exceeds the {MAX_IMPORT_ROWS:,}-row limit")
         line = reader.line_num
         if any(row.get(header) is None for header in REQUIRED_HEADERS):
             warnings.append(f"Row {line}: incomplete row; row skipped")

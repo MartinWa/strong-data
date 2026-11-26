@@ -12,7 +12,7 @@ jobs:
       github.event.pull_request.user.login == 'dependabot[bot]' &&
       github.repository == 'MartinWa/strong-data'
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     permissions:
       contents: write
       pull-requests: write
@@ -42,6 +42,35 @@ jobs:
         uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Wait for CI checks on the PR head
+        if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          deadline=$((SECONDS + 480))
+          while true; do
+            conclusions=$(gh pr checks "$PR_URL" --json workflowName,conclusion \
+              --jq '[.[] | select(.workflowName == "CI") | .conclusion]')
+            status=$(jq -r 'if length == 0 then "waiting"
+              elif all(.[]; . == "success" or . == "skipped") then "ok"
+              elif any(.[]; . != null and . != "pending" and . != "success" and . != "skipped") then "failed"
+              else "waiting" end' <<< "$conclusions")
+            if [[ "$status" == "ok" ]]; then
+              echo "All CI checks on $PR_HEAD_SHA concluded success or skipped."
+              exit 0
+            fi
+            if [[ "$status" == "failed" ]]; then
+              echo "CI checks on $PR_HEAD_SHA did not all conclude success or skipped." >&2
+              exit 1
+            fi
+            if (( SECONDS >= deadline )); then
+              echo "Timed out waiting for CI checks on $PR_HEAD_SHA." >&2
+              exit 1
+            fi
+            sleep 20
+          done
       - name: Enable auto-merge for patch updates
         if: steps.metadata.outputs.update-type == 'version-update:semver-patch'
         env:

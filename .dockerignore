@@ -3,6 +3,8 @@
 .gitattributes
 planning/
 reference/
+.vibe/
+.playwright-cli/
 .env
 .env.*
 !.env.example

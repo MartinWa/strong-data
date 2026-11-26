@@ -106,7 +106,7 @@
   </form>
 </div>
 
-<script>
+<script nonce="{{ csp_nonce }}">
 (function () {
   document.querySelectorAll('[data-row-confirm]').forEach(function (zone) {
     var start = zone.querySelector('[data-row-start]');

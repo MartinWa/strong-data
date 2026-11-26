@@ -24,13 +24,14 @@ upload page repeats these steps where you need them.
 1. **In the Strong app**, open your profile or its settings, choose **Export
    workouts** (some versions call it **Export data**) and save the CSV.
 2. **Upload** (`/upload/`) — choose the file, or drag it onto the page. It must be
-   the CSV Strong exports and at most 10 MB; columns the app does not read are
-   ignored. Choosing it opens the preview.
+   the CSV Strong exports, at most 10 MB and at most 100,000 rows; columns the app
+   does not read are ignored. Choosing it opens the preview.
 3. **Preview** (`/preview/`) — check the sessions, a sample of sets, and any
-   warnings, then choose *Confirm import*. Confirming imports the whole file, not
-   only the sampled sets. *Cancel* throws the preview away and nothing is
-   imported; uploading again replaces the pending preview. An unconfirmed preview
-   expires after one hour.
+   warnings, then choose *Confirm import*. The sessions table lists the newest 200
+   sessions of the file while the counts at the top are always the true totals.
+   Confirming imports the whole file, not only the sampled sets. *Cancel* throws
+   the preview away and nothing is imported; uploading again replaces the pending
+   preview. An unconfirmed preview expires after one hour.
 4. **Sessions** (`/sessions/`) — the imported sessions, newest first, 25 per page.
    Open a row to see its sets.
 
@@ -56,6 +57,7 @@ and skipped or blanked instead of failing the import.
 | Problem | Result |
 | --- | --- |
 | Missing required columns, empty or unreadable file, no importable rows | Rejected at upload |
+| More than 100,000 data rows | Rejected at upload |
 | Invalid date, both the workout and exercise name missing, invalid set order or reps | Row skipped, warning |
 | Negative weight | Row skipped, warning |
 | Invalid weight, distance or seconds | Stored empty, warning |
@@ -71,6 +73,10 @@ Warnings are grouped by cause with a count, and each group lists the first 20 CS
 line numbers affected. A `Weight` of `0` is bodyweight, exactly like an empty
 `Weight`: no weight is stored, it adds no volume, and it appears in bodyweight
 records.
+
+The sessions table on the preview is capped at the newest 200 sessions so a huge
+export stays readable; the session and set counts above it always cover the whole
+file, and confirming imports all of it.
 
 ![The preview with five warnings grouped by cause above the sessions in the file](images/import-warnings.png)
 

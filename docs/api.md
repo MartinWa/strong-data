@@ -12,16 +12,24 @@ and the definitions behind each derived number.
 
 ## Auth
 
-- `GET /api/v1/healthz` is the only anonymous endpoint.
-- Every other endpoint requires `Authorization: Bearer <secret>`. The token
-  resolves to a user and **every** queryset is scoped to that user; no user
-  identifier appears in any URL. A missing, malformed, revoked or expired token
-  returns `401` with `WWW-Authenticate: Bearer`. Only a SHA-256 hash and an
-  8-character prefix are stored, and comparison is constant-time. Secrets are
-  created on `/tokens/` in the web UI and shown once.
+- `GET /api/v1/healthz` is the only anonymous endpoint. It also runs a trivial
+  database query (`SELECT 1`) and answers `503 service_unavailable` when that
+  check fails, so a load balancer can use it as a readiness probe.
+- Every other endpoint under `/api/v1/` requires `Authorization: Bearer <secret>`
+  and is verified before any other guard runs, so an unauthenticated request
+  gets `401` even when it would also be oversized, chunked or a disallowed
+  method. The token resolves to a user and **every** queryset is scoped to that
+  user; no user identifier appears in any URL. A missing, malformed, revoked or
+  expired token returns `401` with `WWW-Authenticate: Bearer`. Only a SHA-256
+  hash and an 8-character prefix are stored, and comparison is constant-time.
+  Secrets are created on `/tokens/` in the web UI and shown once.
 - `GET /api/v1/docs` and `GET /api/v1/openapi.json` additionally accept a
   logged-in browser session, because a browser cannot attach a bearer token. The
   data endpoints never do.
+- Any other path under `/api/` (for example `/api/v2/...`) is not part of the
+  versioned API and returns the JSON `404 not_found` envelope, not an HTML page.
+- Requests that arrive with a chunked body (`Transfer-Encoding` header) are
+  rejected with `400 bad_request` before the body is read.
 
 ## Envelope
 
@@ -32,9 +40,9 @@ sets `Cache-Control: no-store`.
 
 Collections add `items`, the complete filtered `count`, `next`/`previous`
 continuation paths and `has_more`. Errors add `error` with `code`, `message` and
-`details` (`details` is null when not applicable), and unmatched API URLs return
-the same envelope (`404 not_found`) instead of an HTML error page. The shapes are
-in the schema; the stable error codes are:
+`details` (`details` is null when not applicable), and unmatched URLs anywhere
+under `/api/` return the same envelope (`404 not_found`) instead of an HTML
+error page. The shapes are in the schema; the stable error codes are:
 
 | Status | `error.code` |
 | --- | --- |
@@ -75,8 +83,11 @@ the clock in the export.
   declare no filters, where any query parameter is `422`. No value is silently
   coerced to zero or clamped.
 - `start <= end` is required and a span of more than 1830 days (about five years)
-  is `422`. `limit` must be between 1 and 1000 and `offset` must be `>= 0`; values
-  outside those bounds are `422`, not clamped.
+  is `422`. Series endpoints scale that cap with `bucket`, because a coarser
+  bucket covers more days: `day` keeps 1830 days, `week` allows 12810 days
+  (1830 weeks), `month` 56730 days (1830 months) and `year` 669780 days
+  (1830 years). `limit` must be between 1 and 1000 and `offset` must be `>= 0`;
+  values outside those bounds are `422`, not clamped.
 - Where a date range is omitted, the effective range is the span of the owner's
   data within that endpoint's other filters, or empty when there is no data.
 - Aggregated endpoints return summaries; raw sets are opt-in via the raw
@@ -159,7 +170,9 @@ zero-filled even if no sessions match it.
   falling back to `Other`.
 - `program` filters every series endpoint (see Filters). Only matching sessions
   and sets are counted and grouped, and the zero-filled buckets cover the
-  default range or the supplied `start`/`end`.
+  default range or the supplied `start`/`end`. The date-range cap is scaled by
+  `bucket` as described under Validation guardrails, so a `bucket=month` series
+  may span more than five years while `bucket=day` may not.
 
 ## Breakdowns
 

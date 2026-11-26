@@ -7,12 +7,16 @@ API_BASE = "/api/v1"
 
 
 def app_info(request):
-    version = app_version()
-    return {
-        "app_version": version,
-        "app_is_release": version_number(version) is not None,
+    info = {
+        "csp_nonce": getattr(request, "csp_nonce", ""),
         "app_repository_url": REPOSITORY_URL,
         "app_releases_url": RELEASES_URL,
         "app_check_updates": settings.UPDATE_CHECK_ENABLED,
         "api_docs_url": f"{API_BASE}/docs",
     }
+    user = getattr(request, "user", None)
+    if user is not None and user.is_authenticated:
+        version = app_version()
+        info["app_version"] = version
+        info["app_is_release"] = version_number(version) is not None
+    return info

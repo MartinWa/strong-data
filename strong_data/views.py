@@ -1,4 +1,5 @@
 from django.contrib.auth import views as auth_views
+from django.contrib.auth.decorators import login_required
 from django.contrib.auth.models import AnonymousUser
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import render
@@ -23,6 +24,7 @@ class LoginView(auth_views.LoginView):
         return response
 
 
+@login_required
 @require_GET
 @never_cache
 def release_status(request):

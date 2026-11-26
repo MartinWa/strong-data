@@ -13,6 +13,7 @@ from parsing import ParsedWorkouts
 PENDING_TTL_SECONDS = 3600
 SAMPLE_SET_LIMIT = 20
 WARNING_ROW_LIMIT = 20
+PREVIEW_SESSION_LIMIT = 200
 IMPORT_ID_PATTERN = re.compile(r"[A-Za-z0-9_-]{16,64}")
 ROW_WARNING_PATTERN = re.compile(r"Row (\d+): (.+)")
 
@@ -159,9 +160,8 @@ def count_warning_rows(warnings: tuple[str, ...] | list[str]) -> int:
 
 def summarize(parsed: ParsedWorkouts) -> dict:
     ordered_sessions = sorted(
-        reversed(parsed.sessions),
-        key=lambda session: session.session_date,
-        reverse=True,
+        parsed.sessions,
+        key=lambda session: (-session.session_date.toordinal(), session.workout_name),
     )
     sessions = [
         {
@@ -172,7 +172,7 @@ def summarize(parsed: ParsedWorkouts) -> dict:
             "total_volume_kg": str(round(session.total_volume_kg, 2)),
             "duration_min": session.duration_min,
         }
-        for session in ordered_sessions
+        for session in ordered_sessions[:PREVIEW_SESSION_LIMIT]
     ]
     sample_groups = []
     sample_set_count = 0
@@ -215,6 +215,7 @@ def summarize(parsed: ParsedWorkouts) -> dict:
     warnings = list(parsed.warnings)
     return {
         "sessions": sessions,
+        "session_total": len(parsed.sessions),
         "exercises": list(parsed.exercises),
         "warning_total": len(warnings),
         "warning_rows": count_warning_rows(warnings),

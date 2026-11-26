@@ -7,7 +7,7 @@ from ninja.params.models import Query as QueryField
 from ninja.params.models import QueryModel
 from pydantic import BeforeValidator, ConfigDict
 
-from .contract import MAX_LIMIT, MAX_RANGE_DAYS, ApiError
+from .contract import MAX_LIMIT, ApiError, max_range_days
 
 _INT_RE = re.compile(r"[+-]?\d+")
 _DATE_RE = re.compile(r"\d{4}-\d{2}-\d{2}")
@@ -111,16 +111,17 @@ def validate_year(year):
         raise ApiError(422, "validation_error", f"year must be between {MIN_YEAR} and {MAX_YEAR}")
 
 
-def validate_date_range(start, end):
+def validate_date_range(start, end, bucket=None):
     if start is None or end is None:
         return
     if start > end:
         raise ApiError(422, "validation_error", "start must be less than or equal to end")
-    if (end - start).days > MAX_RANGE_DAYS:
+    cap = max_range_days(bucket)
+    if (end - start).days > cap:
         raise ApiError(
             422,
             "validation_error",
-            f"date range may not exceed {MAX_RANGE_DAYS} days",
+            f"date range may not exceed {cap} days",
         )
 
 

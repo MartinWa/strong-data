@@ -56,6 +56,33 @@ def test_the_theme_is_resolved_before_the_stylesheet_is_requested(client):
     assert "matchMedia" in content
 
 
+def test_pages_send_a_csp_header_with_a_per_request_nonce(client):
+    first = client.get(reverse("login"))
+    second = client.get(reverse("login"))
+
+    policy = first.headers["Content-Security-Policy"]
+    for directive in (
+        "default-src 'self'",
+        "script-src 'self' 'nonce-",
+        "style-src 'self' 'unsafe-inline'",
+        "img-src 'self' data:",
+        "connect-src 'self'",
+        "font-src 'self'",
+        "object-src 'none'",
+        "base-uri 'self'",
+        "form-action 'self'",
+        "frame-ancestors 'none'",
+    ):
+        assert directive in policy
+
+    first_nonce = re.search(r'<script nonce="([^"]+)">', first.content.decode()).group(1)
+    second_nonce = re.search(r'<script nonce="([^"]+)">', second.content.decode()).group(1)
+
+    assert first_nonce != second_nonce
+    assert f"'nonce-{first_nonce}'" in policy
+    assert f"'nonce-{second_nonce}'" in second.headers["Content-Security-Policy"]
+
+
 def test_the_toggle_is_hidden_until_javascript_can_drive_it(client):
     content = client.get(reverse("login")).content.decode()
 

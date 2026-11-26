@@ -1,6 +1,7 @@
 """Django settings for the strong-data project."""
 
 import os
+import secrets
 from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
@@ -30,24 +31,45 @@ def secret_key(debug: bool) -> str:
     if value and value not in PLACEHOLDER_SECRET_KEYS:
         return value
     if debug:
-        return DEVELOPMENT_SECRET_KEY
+        return secrets.token_urlsafe(50)
     raise ImproperlyConfigured(
         "STRONG_SECRET_KEY must be set to a unique random value when STRONG_DEBUG is false."
     )
 
 
 SECRET_KEY = secret_key(DEBUG)
-ALLOWED_HOSTS = [
-    host.strip()
-    for host in os.environ.get("STRONG_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
-    if host.strip()
-]
+
+
+def allowed_hosts(debug: bool) -> list[str]:
+    hosts = [
+        host.strip()
+        for host in os.environ.get("STRONG_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",")
+        if host.strip()
+    ]
+    if not debug and "*" in hosts:
+        raise ImproperlyConfigured(
+            "STRONG_ALLOWED_HOSTS must list explicit hostnames when STRONG_DEBUG is false; "
+            "'*' would accept any Host header."
+        )
+    return hosts
+
+
+ALLOWED_HOSTS = allowed_hosts(DEBUG)
 CSRF_TRUSTED_ORIGINS = [
     origin.strip()
     for origin in os.environ.get("STRONG_CSRF_TRUSTED_ORIGINS", "").split(",")
     if origin.strip()
 ]
-SECURE_PROXY_SSL_HEADER = ("HTTP_X_FORWARDED_PROTO", "https")
+
+
+def proxy_ssl_header(trusted_proxy: str) -> tuple[str, str] | None:
+    value = trusted_proxy.strip()
+    if value and value != "*":
+        return ("HTTP_X_FORWARDED_PROTO", "https")
+    return None
+
+
+SECURE_PROXY_SSL_HEADER = proxy_ssl_header(os.environ.get("STRONG_TRUSTED_PROXY", ""))
 SESSION_COOKIE_SECURE = not DEBUG
 CSRF_COOKIE_SECURE = not DEBUG
 
@@ -63,8 +85,8 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
-    "api.middleware.ApiResponseMiddleware",
     "django.middleware.security.SecurityMiddleware",
+    "strong_data.middleware.ContentSecurityPolicyMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
     "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
@@ -72,6 +94,7 @@ MIDDLEWARE = [
     "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.contrib.messages.middleware.MessageMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
+    "api.middleware.ApiResponseMiddleware",
 ]
 
 ROOT_URLCONF = "strong_data.urls"

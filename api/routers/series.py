@@ -14,7 +14,7 @@ GroupBy = Literal["program", "muscle", "exercise"] | None
 
 
 def _build(request, metric, bucket, group_by, start, end, moving_average, program):
-    validate_date_range(start, end)
+    validate_date_range(start, end, bucket=bucket)
     return {
         **envelope(),
         **series_data(request.auth, metric, bucket, group_by, start, end, moving_average, program),

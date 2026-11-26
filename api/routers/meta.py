@@ -1,6 +1,7 @@
+from django.db import connection
 from ninja import Router
 
-from ..contract import envelope
+from ..contract import ServiceUnavailableError, envelope
 from ..params import NoQuery, StrictQuery
 from ..schemas import HealthOut, MeOut
 
@@ -9,6 +10,11 @@ router = Router()
 
 @router.get("/healthz", auth=None, response=HealthOut, tags=["meta"], summary="Liveness probe")
 def healthz(request, query: NoQuery = StrictQuery(None)):
+    try:
+        with connection.cursor() as cursor:
+            cursor.execute("SELECT 1")
+    except Exception as exc:
+        raise ServiceUnavailableError() from exc
     return {**envelope(), "status": "ok"}
 
 

@@ -37,6 +37,21 @@ def request(port, path, token=None):
         return error.code, error.headers
 
 
+class NoRedirectHandler(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def request_without_redirects(port, path):
+    opener = urllib.request.build_opener(NoRedirectHandler)
+    probe = urllib.request.Request(f"http://127.0.0.1:{port}{path}", headers={"Host": "127.0.0.1"})
+    try:
+        with opener.open(probe, timeout=5) as response:
+            return response.status, response.headers
+    except urllib.error.HTTPError as error:
+        return error.code, error.headers
+
+
 def request_with_declared_body(port, size, timeout=10):
     connection = http.client.HTTPConnection("127.0.0.1", port, timeout=timeout)
     try:
@@ -123,6 +138,10 @@ def verify_serving(database):
         assert status == 401, status
         status, _ = request(port, "/")
         assert status in (200, 301, 302), status
+        status, headers = request_without_redirects(port, "/sessions/")
+        assert status == 302, status
+        location = headers.get("Location", "")
+        assert location.startswith("/accounts/login/"), location
         verify_request_body_cap(port)
     finally:
         child.terminate()

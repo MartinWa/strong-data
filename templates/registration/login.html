@@ -30,7 +30,7 @@
     <p class="auth-note">Your administrator creates accounts. There is no open registration.</p>
   </div>
 </div>
-<script>
+<script nonce="{{ csp_nonce }}">
 document.querySelectorAll('[data-password-toggle]').forEach(function (button) {
   var field = document.querySelector(button.dataset.passwordToggle);
   if (!field) return;

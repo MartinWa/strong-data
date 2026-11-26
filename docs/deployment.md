@@ -49,7 +49,7 @@ refuses to start when `STRONG_SECRET_KEY` is missing or still the placeholder fr
 | --- | --- | --- |
 | `STRONG_SECRET_KEY` | none, required | Django secret. Generate one per installation: `python -c "import secrets; print(secrets.token_urlsafe(50))"`. `STRONG_SECRET_KEY_FILE` reads the value from a file instead, for Docker or Podman secrets. |
 | `STRONG_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated public hostnames the proxy forwards, e.g. `workouts.example.com`. Requests with any other `Host` are rejected. |
-| `STRONG_TRUSTED_PROXY` | none, required | Address allowed to set forwarding headers. Use `*` when the container is reachable only from a trusted Docker network or a loopback port, or the proxy's container address to narrow it. Without it `X-Forwarded-Proto` is ignored and HTTPS form submissions fail the CSRF origin check. |
+| `STRONG_TRUSTED_PROXY` | none, required | Address allowed to set forwarding headers. Use `*` when the container is reachable only from a trusted Docker network or a loopback port, or the proxy's container address to narrow it. Without it `X-Forwarded-Proto` is ignored and HTTPS form submissions fail the CSRF origin check. With a specific address (not `*`, not empty) the app also honors the proxy's `X-Forwarded-Proto` itself (`SECURE_PROXY_SSL_HEADER`); with `*` it does not, and the server prints a warning at startup when `STRONG_HOST_PORT` also publishes the port on the host, because then any client that can reach the port can spoof forwarding headers. |
 | `STRONG_IMAGE` | `ghcr.io/martinwa/strong-data:latest` | Image tag or digest to deploy. |
 | `STRONG_TIME_ZONE` | `UTC` | IANA zone name, e.g. `Europe/Stockholm`. Strong exports record wall-clock local time with no offset, so imports are interpreted in this zone and every date in the UI and API is rendered in it. It applies at import time: changing it later does not rewrite existing rows. |
 | `PUID` / `PGID` | `1000` / `1000` | UID and GID the process runs as and that must own the `data` directory. |
@@ -99,6 +99,10 @@ docker compose logs -f web
 
 If the data directory is not writable, startup stops with an error that names the
 directory and the `chown` that fixes it. Create the first account next.
+
+The server sets `umask 0077` before it opens the database, so `strong.sqlite3` and
+its `-wal` / `-shm` sidecar files are created with mode `0600`: readable and
+writable only by the user the container runs as.
 
 On each start the container applies migrations and serves the app with waitress.
 Static files are collected into the image at build time and served locally by
@@ -209,6 +213,35 @@ limit on its own side too: the server refuses request bodies above 11 MB before
 reading them, so a proxy that forgets its own limit cannot be used to fill the
 container's temporary storage. Keep `.env` private: it is gitignored, excluded
 from the image build context, and must never be committed.
+
+Prefer naming the proxy's own address in `STRONG_TRUSTED_PROXY` over `*`: with a
+specific address the app also trusts the forwarded `X-Forwarded-Proto` at the
+Django layer, so HTTPS form submissions pass the CSRF origin check no matter how
+the proxy is wired. With `*` that header is ignored by the app, and if
+`STRONG_HOST_PORT` publishes the port on the host at the same time, startup
+prints a loud warning on stderr: publish the port on `127.0.0.1` only, never on
+`0.0.0.0`.
+
+### Rate limiting
+
+The app ships no rate limiter of its own, so put one on the two unauthenticated
+entry points in the reverse proxy — `/accounts/login/` and `/admin/`. For nginx:
+
+```nginx
+limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/m;
+
+location = /accounts/login/ {
+    limit_req zone=auth burst=5 nodelay;
+    proxy_pass http://127.0.0.1:8000;
+}
+location /admin/ {
+    limit_req zone=auth burst=5 nodelay;
+    proxy_pass http://127.0.0.1:8000;
+}
+```
+
+Caddy (`rate_limit` in the site block) and Traefik do the same; the exact
+directive differs per proxy, but the two paths above are the ones worth limiting.
 
 ## Housekeeping
 

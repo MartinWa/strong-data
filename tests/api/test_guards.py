@@ -1,7 +1,10 @@
 import hashlib
 from datetime import timedelta
+from unittest import mock
 
+import pytest
 from django.contrib.staticfiles import finders
+from django.db import OperationalError
 from django.test import Client
 from django.utils import timezone
 
@@ -146,21 +149,39 @@ def test_method_body_and_media_type_guards(auth):
     assert_error(auth.post(BASE + "/summary"), 405, "method_not_allowed")
     assert_error(auth.delete(BASE + "/sets"), 405, "method_not_allowed")
 
-    oversized = anonymous.get(
-        BASE + "/summary",
-        HTTP_AUTHORIZATION=f"Bearer {SECRET}",
-        CONTENT_LENGTH=str(10 * 1024 * 1024 + 1),
-    )
+    oversized = auth.get(BASE + "/summary", CONTENT_LENGTH=str(10 * 1024 * 1024 + 1))
     assert_error(oversized, 413, "payload_too_large")
 
-    wrong_type = anonymous.generic(
-        "GET",
-        BASE + "/summary",
-        data=b"x",
-        content_type="text/plain",
-        HTTP_AUTHORIZATION=f"Bearer {SECRET}",
-    )
+    wrong_type = auth.generic("GET", BASE + "/summary", data=b"x", content_type="text/plain")
     assert_error(wrong_type, 415, "unsupported_media_type")
+
+    assert_error(
+        anonymous.get(BASE + "/summary", CONTENT_LENGTH=str(10 * 1024 * 1024 + 1)),
+        401,
+        "invalid_credentials",
+    )
+    assert_error(
+        anonymous.generic("GET", BASE + "/summary", data=b"x", content_type="text/plain"),
+        401,
+        "invalid_credentials",
+    )
+
+
+def test_chunked_bodies_are_rejected(auth):
+    response = auth.get(BASE + "/summary", HTTP_TRANSFER_ENCODING="chunked")
+    body = assert_error(response, 400, "bad_request")
+    assert body["error"]["message"] == "Chunked request bodies are not supported"
+    assert_error(
+        Client().get(BASE + "/summary", HTTP_TRANSFER_ENCODING="chunked"),
+        401,
+        "invalid_credentials",
+    )
+
+
+def test_paths_outside_api_v1_return_json_404():
+    for path in ["/api/", "/api/v2/me", "/api/v1x/summary", "/api/anything/else"]:
+        response = Client().get(path)
+        assert_error(response, 404, "not_found")
 
 
 def test_unknown_and_repeated_parameters(client, auth):
@@ -199,10 +220,20 @@ def test_strict_typed_parameters(client, auth):
         assert_error(auth.get(BASE + query), 422, "validation_error")
 
 
+@pytest.mark.django_db
 def test_healthz_stays_anonymous():
     response = Client().get(BASE + "/healthz")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+
+
+@pytest.mark.django_db
+def test_healthz_reports_database_failures():
+    with mock.patch(
+        "api.routers.meta.connection.cursor", side_effect=OperationalError("database is locked")
+    ):
+        response = Client().get(BASE + "/healthz")
+    assert_error(response, 503, "service_unavailable")
 
 
 def test_api_root_requires_token(auth):

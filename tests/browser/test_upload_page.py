@@ -1,3 +1,5 @@
+from datetime import date, timedelta
+
 import pytest
 from django.contrib.auth import get_user_model
 from django.core.files.uploadedfile import SimpleUploadedFile
@@ -209,20 +211,40 @@ def test_preview_labels_the_warning_count_as_affected_rows(client):
 
 
 @pytest.mark.django_db
-def test_preview_caps_the_session_table_behind_show_all(client):
+def test_preview_lists_every_session_without_a_show_all_block(client):
     signed_in(client)
 
     upload(client, TWELVE_SESSIONS)
     content = client.get(reverse("preview")).content.decode()
 
-    assert "Showing the first 10 of 12 sessions." in content
-    assert "Show all 12 sessions" in content
+    assert "Show all" not in content
+    assert "Showing the first 10" not in content
+    for day in range(1, 13):
+        assert f"2026-01-{day:02d}" in content
     assert content.index("2026-01-12") < content.index("2026-01-03")
-    assert content.index("2026-01-03") < content.index("Show all 12 sessions")
-    tail = content[content.index("Show all 12 sessions") : content.index("Sample sets")]
-    assert "2026-01-02" in tail
-    assert "2026-01-01" in tail
-    assert "2026-01-12" not in tail
+    assert content.index("2026-01-03") < content.index("2026-01-01")
+
+
+@pytest.mark.django_db
+def test_preview_caps_the_session_table_at_the_newest_200(client):
+    signed_in(client)
+    start = date(2026, 1, 1)
+    rows = (
+        f"{(start + timedelta(days=offset)).isoformat()} 09:00:00,"
+        "Push Day,54m,Bench Press,1,80,5,0,0,8"
+        for offset in range(205)
+    )
+    many_sessions = HEADER + "".join(f"{row}\n" for row in rows)
+
+    upload(client, many_sessions)
+    content = client.get(reverse("preview")).content.decode()
+
+    assert "Showing the newest 200 of 205 sessions." in content
+    assert '<span class="stat-value">205</span>' in content
+    assert "Show all" not in content
+    assert "2026-07-24" in content
+    assert "2026-01-06" in content
+    assert "2026-01-05" not in content
 
 
 @pytest.mark.django_db

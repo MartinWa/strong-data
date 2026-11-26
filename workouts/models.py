@@ -1,3 +1,6 @@
+import hashlib
+import secrets
+
 from django.conf import settings
 from django.db import models
 from django.utils import timezone
@@ -147,6 +150,20 @@ class ApiToken(models.Model):
         constraints = [
             models.UniqueConstraint(fields=["owner", "name"], name="uniq_token_owner_name")
         ]
+
+    @classmethod
+    def generate(cls, owner, name, expires_at=None):
+        secret = secrets.token_urlsafe(32)
+        assert len(secret) >= 32, "token secret is too short"  # noqa: S101
+        instance = cls(
+            owner=owner,
+            name=name,
+            key_hash=hashlib.sha256(secret.encode()).hexdigest(),
+            prefix=secret[:8],
+            expires_at=expires_at,
+        )
+        instance.save()
+        return instance, secret
 
     @property
     def is_expired(self):
