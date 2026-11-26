@@ -9,7 +9,7 @@ from django.test import Client
 from django.utils import timezone
 
 from tests.api.conftest import SECRET
-from workouts.models import ApiToken
+from workouts.models import ApiToken, WorkoutSession
 
 BASE = "/api/v1"
 
@@ -167,17 +167,6 @@ def test_method_body_and_media_type_guards(auth):
     )
 
 
-def test_chunked_bodies_are_rejected(auth):
-    response = auth.get(BASE + "/summary", HTTP_TRANSFER_ENCODING="chunked")
-    body = assert_error(response, 400, "bad_request")
-    assert body["error"]["message"] == "Chunked request bodies are not supported"
-    assert_error(
-        Client().get(BASE + "/summary", HTTP_TRANSFER_ENCODING="chunked"),
-        401,
-        "invalid_credentials",
-    )
-
-
 def test_paths_outside_api_v1_return_json_404():
     for path in ["/api/", "/api/v2/me", "/api/v1x/summary", "/api/anything/else"]:
         response = Client().get(path)
@@ -221,16 +210,21 @@ def test_strict_typed_parameters(client, auth):
 
 
 @pytest.mark.django_db
-def test_healthz_stays_anonymous():
-    response = Client().get(BASE + "/healthz")
+def test_healthz_stays_anonymous_and_queries_an_application_table():
+    with mock.patch(
+        "api.routers.meta.WorkoutSession.objects", wraps=WorkoutSession.objects
+    ) as objects_mock:
+        response = Client().get(BASE + "/healthz")
     assert response.status_code == 200
     assert response.json()["status"] == "ok"
+    objects_mock.values.assert_called_once_with("id")
 
 
 @pytest.mark.django_db
 def test_healthz_reports_database_failures():
     with mock.patch(
-        "api.routers.meta.connection.cursor", side_effect=OperationalError("database is locked")
+        "api.routers.meta.WorkoutSession.objects.values",
+        side_effect=OperationalError("no such table: workouts_workoutsession"),
     ):
         response = Client().get(BASE + "/healthz")
     assert_error(response, 503, "service_unavailable")

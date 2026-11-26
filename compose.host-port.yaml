@@ -1,5 +1,9 @@
 # Publish the app on loopback only, for a reverse proxy running on the host.
 services:
   web:
+    environment:
+      # Passed in so the server can warn when STRONG_TRUSTED_PROXY=* is
+      # combined with a port published on the host.
+      - STRONG_HOST_PORT
     ports:
       - "127.0.0.1:${STRONG_HOST_PORT:-8000}:8000"

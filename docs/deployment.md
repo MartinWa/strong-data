@@ -62,7 +62,7 @@ refuses to start when `STRONG_SECRET_KEY` is missing or still the placeholder fr
 | `STRONG_STATIC_ROOT` | `/app/staticfiles` | Where collected static files live. The image ships them and is read-only, so override only together with a writable volume. |
 | `STRONG_NETWORK` | `strong-data` | Name of the Docker network Compose creates for the app. |
 | `PROXY_NETWORK` | `proxy` | Existing proxy network to join, used only with `compose.proxy-network.yaml`. |
-| `STRONG_HOST_PORT` | `8000` | Loopback port, used only with `compose.host-port.yaml`. |
+| `STRONG_HOST_PORT` | `8000` | Loopback port, used only with `compose.host-port.yaml`. That override also passes the variable into the container, so the wildcard-proxy warning described above can fire when `STRONG_TRUSTED_PROXY=*` is set. |
 
 The production Compose file passes application variables through untouched and
 defaults only the image, the user and the network name, so a value in `.env` (or
@@ -233,12 +233,25 @@ limit_req_zone $binary_remote_addr zone=auth:10m rate=5r/m;
 location = /accounts/login/ {
     limit_req zone=auth burst=5 nodelay;
     proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    client_max_body_size 10m;
 }
 location /admin/ {
     limit_req zone=auth burst=5 nodelay;
     proxy_pass http://127.0.0.1:8000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto https;
+    client_max_body_size 10m;
 }
 ```
+
+Each location needs the same `proxy_set_header` lines as `location /` above:
+nginx locations do not inherit them, and without `Host` and `X-Forwarded-Proto`
+the app sees the upstream address and rejects the request or fails the CSRF
+origin check on HTTPS form submissions.
 
 Caddy (`rate_limit` in the site block) and Traefik do the same; the exact
 directive differs per proxy, but the two paths above are the ones worth limiting.

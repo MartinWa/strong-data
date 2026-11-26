@@ -12,12 +12,14 @@ and the definitions behind each derived number.
 
 ## Auth
 
-- `GET /api/v1/healthz` is the only anonymous endpoint. It also runs a trivial
-  database query (`SELECT 1`) and answers `503 service_unavailable` when that
-  check fails, so a load balancer can use it as a readiness probe.
+- `GET /api/v1/healthz` is the only anonymous endpoint. It queries a required
+  application table (`workouts_workoutsession`) and answers
+  `503 service_unavailable` when that check fails, so a load balancer can use it
+  as a readiness probe: a migrated but still empty database is ready, a missing
+  or unreadable one is not.
 - Every other endpoint under `/api/v1/` requires `Authorization: Bearer <secret>`
   and is verified before any other guard runs, so an unauthenticated request
-  gets `401` even when it would also be oversized, chunked or a disallowed
+  gets `401` even when it would also be oversized or a disallowed
   method. The token resolves to a user and **every** queryset is scoped to that
   user; no user identifier appears in any URL. A missing, malformed, revoked or
   expired token returns `401` with `WWW-Authenticate: Bearer`. Only a SHA-256
@@ -28,8 +30,10 @@ and the definitions behind each derived number.
   data endpoints never do.
 - Any other path under `/api/` (for example `/api/v2/...`) is not part of the
   versioned API and returns the JSON `404 not_found` envelope, not an HTML page.
-- Requests that arrive with a chunked body (`Transfer-Encoding` header) are
-  rejected with `400 bad_request` before the body is read.
+- Request bodies are capped at 10 MB: a declared `Content-Length` above that
+  gets `413 payload_too_large`. Chunked request bodies are accepted like any
+  other body — the server buffers them and refuses anything above its own 11 MB
+  limit before the body reaches the app — so the same cap applies to them.
 
 ## Envelope
 

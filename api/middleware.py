@@ -47,9 +47,6 @@ class ApiResponseMiddleware:
                 if not _session_may_view_docs(request, path):
                     return auth_error_response(exc)
 
-        if "HTTP_TRANSFER_ENCODING" in request.META:
-            return error_response(400, "bad_request", "Chunked request bodies are not supported")
-
         length = request.META.get("CONTENT_LENGTH", "")
         size = int(length) if length.isdigit() else 0
         if size > MAX_BODY_BYTES:
