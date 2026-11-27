@@ -20,6 +20,7 @@
 <div class="card undo-banner">
   <form method="post" action="{% url 'undo_delete' %}">
     {% csrf_token %}
+    <input type="hidden" name="stash_id" value="{{ request.session.undo_stash }}">
     <p>A session was deleted. <button class="btn btn-sm" type="submit">Undo delete</button></p>
     <p class="muted small">Undo is available for a limited time and is lost if the server restarts.</p>
   </form>
@@ -124,7 +125,13 @@
   </div>
   <form class="session-delete" method="post" action="{% url 'delete_session' session.id %}">
     {% csrf_token %}
+    {% if request.GET.confirm_delete == session.id|stringformat:"s" %}
+    <input type="hidden" name="confirm" value="1">
+    <button class="btn btn-danger btn-sm" type="submit">Really delete this session (no undo)</button>
+    <a class="btn btn-ghost btn-sm" href="{% url 'sessions' %}">Cancel</a>
+    {% else %}
     <button class="btn btn-danger btn-sm" type="submit">Delete this session</button>
+    {% endif %}
   </form>
 </details>
 {% endfor %}

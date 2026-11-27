@@ -135,10 +135,7 @@
           <th scope="col">Workout</th>
           <th scope="col">Exercise</th>
           <th scope="col" class="num">Set</th>
-          <th scope="col" class="num">Stored weight (kg)</th>
-          <th scope="col" class="num">File weight (kg)</th>
-          <th scope="col" class="num">Stored reps</th>
-          <th scope="col" class="num">File reps</th>
+          <th scope="col">Changed (stored → file)</th>
         </tr>
       </thead>
       <tbody>
@@ -148,10 +145,7 @@
           <td>{{ conflict.workout_name }}</td>
           <td>{{ conflict.exercise_name }}</td>
           <td class="num">{{ conflict.set_order|num }}</td>
-          <td class="num">{{ conflict.stored_weight_kg|num }}</td>
-          <td class="num">{{ conflict.file_weight_kg|num }}</td>
-          <td class="num">{{ conflict.stored_reps|num }}</td>
-          <td class="num">{{ conflict.file_reps|num }}</td>
+          <td>{% for change in conflict.changes %}{{ change.label }}: {{ change.stored|num }} → {{ change.file|num }}{% if not forloop.last %}, {% endif %}{% endfor %}</td>
         </tr>
         {% endfor %}
       </tbody>
