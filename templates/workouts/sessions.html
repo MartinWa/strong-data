@@ -123,7 +123,7 @@
       {% endfor %}
     </table>
   </div>
-  <form class="session-delete" method="post" action="{% url 'delete_session' session.id %}">
+  <form class="session-delete" method="post" action="{% url 'delete_session' session.id %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">
     {% csrf_token %}
     {% if request.GET.confirm_delete == session.id|stringformat:"s" %}
     <input type="hidden" name="confirm" value="1">

@@ -228,6 +228,60 @@ def test_exact_duplicate_set_rows_in_one_file_store_one_row():
 
 
 @pytest.mark.django_db
+def test_renumbering_reserves_source_orders_of_later_rows():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    text = csv_text(
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,85,5,0,0,8",
+        "2026-01-05 08:30:00,Push Day,54m,Bench,2,85,5,0,0,8",
+    )
+
+    result = import_workouts_csv(user, text)
+
+    assert result.added_sets == 3
+    assert sorted(WorkoutSet.objects.filter(owner=user).values_list("set_order", flat=True)) == [
+        1,
+        2,
+        3,
+    ]
+    weights = sorted(WorkoutSet.objects.filter(owner=user).values_list("weight_kg", flat=True))
+    assert weights == [Decimal("80.00"), Decimal("85.00"), Decimal("85.00")]
+    reimport = import_workouts_csv(user, text)
+    assert (reimport.added_sets, reimport.skipped_sets, reimport.conflicted) == (0, 3, 0)
+
+
+@pytest.mark.django_db
+def test_edit_matching_another_sets_values_is_still_a_conflict():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    original = csv_text(
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:30:00,Push Day,54m,Bench,2,85,5,0,0,8",
+    )
+    import_workouts_csv(user, original)
+    edited = csv_text(
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,85,5,0,0,8",
+        "2026-01-05 08:30:00,Push Day,54m,Bench,2,85,5,0,0,8",
+    )
+
+    result = import_workouts_csv(user, edited)
+
+    assert (result.added_sets, result.skipped_sets, result.conflicted) == (0, 2, 1)
+
+
+@pytest.mark.django_db
+def test_compare_import_distinguishes_new_exercises_with_identical_rows():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    text = csv_text(
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:30:00,Push Day,54m,Row,1,80,5,0,0,8",
+    )
+
+    comparison = services.compare_import(user, parse_workouts(text))
+
+    assert comparison["new_sets"] == 2
+
+
+@pytest.mark.django_db
 def test_same_timestamp_different_set_order_are_distinct_sets():
     user = get_user_model().objects.create_user(username="alice", password="x")
     text = csv_text(

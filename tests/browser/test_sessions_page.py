@@ -444,16 +444,45 @@ def test_oversized_delete_confirmation_keeps_the_current_page_and_filters(client
     monkeypatch.setattr(pending, "STASH_MAX_BYTES", 10)
     target = WorkoutSession.objects.filter(owner=user).order_by("session_date", "id").first()
 
-    response = client.post(f"{reverse('delete_session', args=[target.pk])}?page=2&q=Push")
+    content = client.get(reverse("sessions"), {"page": 2, "q": "Push"}).content.decode()
+    marker = f"/sessions/{target.pk}/delete/"
+    index = content.index(marker)
+    action = content[content.rindex('action="', 0, index) + 8 : content.index('"', index)]
+    assert "page=2" in action
+    assert "q=Push" in action
+
+    response = client.post(action)
 
     assert response.status_code == 302
     assert "page=2" in response.url
     assert "q=Push" in response.url
     assert f"confirm_delete={target.pk}" in response.url
     assert f"open={target.pk}" in response.url
-    content = client.get(response.url).content.decode()
-    assert "Really delete this session (no undo)" in content
-    assert content.count("data-print-open open>") == 1
+    confirming = client.get(response.url).content.decode()
+    assert "Really delete this session (no undo)" in confirming
+    assert confirming.count("data-print-open open>") == 1
+
+
+@pytest.mark.django_db
+def test_undo_restores_identical_valued_sets_with_different_orders(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    text = HEADER + (
+        "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,80,5,0,0,8\n"
+        "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),2,80,5,0,0,8\n"
+    )
+    import_workouts_csv(user, text)
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    stash_id = client.session["undo_stash"]
+    fragment = HEADER + "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,80,5,0,0,8\n"
+    import_workouts_csv(user, fragment)
+
+    client.post(reverse("undo_delete"), {"stash_id": stash_id})
+
+    sets = WorkoutSet.objects.filter(owner=user)
+    assert sets.count() == 2
+    assert sorted(sets.values_list("set_order", flat=True)) == [1, 2]
 
 
 @pytest.mark.django_db
@@ -542,6 +571,8 @@ def test_undo_with_a_missing_stash_reports_expiry(client):
     assert response.status_code == 200
     assert "The undo backup expired or was not found." in response.content.decode()
     assert not WorkoutSession.objects.filter(owner=user).exists()
+    assert "undo_stash" not in client.session
+    assert "Undo delete" not in client.get(reverse("sessions")).content.decode()
 
 
 @pytest.mark.django_db

@@ -120,50 +120,68 @@ def _session_id(ref):
 
 
 def _classify(file_sessions, session_ids, exercise_ids, stored, by_time, zone):
-    """Decide per file set: "skip" (already stored, possibly under a renumbered
-    order, or an exact in-file duplicate), "conflict" (stored key with
-    different values) or "add" (with a collision-free set order).
+    """Decide per file set: "skip", "conflict" or "add" (with a collision-free
+    set order). Identity is (timestamp group, source order); a values-based
+    fallback only covers rows renumbered away from their source order, i.e.
+    stored under an order the file itself does not use. Unsaved entities get
+    per-entity placeholder keys so they never conflate.
 
-    Each stored timestamp group is read once; decisions carry
-    (session_key, item, set_order, decision, values, set_time).
+    Decisions carry (session_key, item, set_order, decision, values, set_time).
     """
-    decisions = []
-    orders_by_time = {}
-    values_by_time = {}
-    assigned = {}
+    entries = []
+    reserved = {}
     for _session, sets, key in file_sessions:
         session_id = session_ids[key]
+        sid_key = session_id if session_id is not None else ("new-session", key)
         for item in sets:
             exercise_id = exercise_ids.get(item.exercise_name)
-            values = _norm_values(
-                (item.weight_kg, item.reps, item.rpe, item.distance, item.seconds)
+            ex_key = (
+                exercise_id if exercise_id is not None else ("new-exercise", item.exercise_name)
             )
             set_time = _file_set_time(item, zone)
-            tkey = (session_id, exercise_id, set_time)
-            if tkey not in orders_by_time:
-                group = by_time.get(tkey, {})
-                orders_by_time[tkey] = set(group.values())
-                values_by_time[tkey] = set(group)
-            orders = orders_by_time[tkey]
-            values_seen = values_by_time[tkey]
-            order = item.set_order
-            set_key = (session_id, exercise_id, order, set_time)
+            entries.append((key, sid_key, ex_key, set_time, item))
+            reserved.setdefault((sid_key, ex_key, set_time), set()).add(item.set_order)
+
+    decisions = []
+    group_state = {}
+    for key, sid_key, ex_key, set_time, item in entries:
+        values = _norm_values((item.weight_kg, item.reps, item.rpe, item.distance, item.seconds))
+        tkey = (sid_key, ex_key, set_time)
+        state = group_state.get(tkey)
+        if state is None:
+            real_key = (
+                (sid_key, ex_key, set_time)
+                if isinstance(sid_key, int) and isinstance(ex_key, int)
+                else None
+            )
+            stored_group = by_time.get(real_key, {}) if real_key else {}
+            state = group_state[tkey] = {
+                "reserved": reserved[tkey],
+                "taken": set(stored_group.values()),
+                "stored_values": stored_group,
+                "source_values": {},
+            }
+        order = item.set_order
+        if isinstance(sid_key, int) and isinstance(ex_key, int):
+            set_key = (sid_key, ex_key, order, set_time)
             if set_key in stored:
-                if stored[set_key] == values or values in values_seen:
+                if stored[set_key] == values or (
+                    values in state["stored_values"]
+                    and state["stored_values"][values] not in state["reserved"]
+                ):
                     decisions.append((key, item, order, "skip", values, set_time))
                 else:
                     decisions.append((key, item, order, "conflict", values, set_time))
                 continue
-            if order in orders:
-                if (set_key in assigned and assigned[set_key] == values) or values in values_seen:
-                    decisions.append((key, item, order, "skip", values, set_time))
-                    continue
-                order = max(orders) + 1
-                set_key = (session_id, exercise_id, order, set_time)
-            assigned[set_key] = values
-            orders.add(order)
-            values_seen.add(values)
-            decisions.append((key, item, order, "add", values, set_time))
+        source_values = state["source_values"].setdefault(order, set())
+        if order in state["taken"]:
+            if values in source_values:
+                decisions.append((key, item, order, "skip", values, set_time))
+                continue
+            order = max(state["reserved"] | state["taken"]) + 1
+        source_values.add(values)
+        state["taken"].add(order)
+        decisions.append((key, item, order, "add", values, set_time))
     return decisions
 
 
@@ -434,41 +452,61 @@ def restore_stash(user, payload: dict) -> int:
                 "total_volume_kg": Decimal(0),
             },
         )
-        by_time = _stored_sets([session.id])[1]
-        rows = []
+        stored, by_time = _stored_sets([session.id])
+        items_by_time = {}
         for item in payload["sets"]:
             exercise, _ = Exercise.objects.get_or_create(owner=user, name=item["exercise_name"])
             set_time = _utc(_parse_aware(item["set_time"], zone))
-            tkey = (session.id, exercise.id, set_time)
             weight_kg = _decimal_or_none(item.get("weight_kg"))
             rpe = _decimal_or_none(item.get("rpe"))
             distance = _decimal_or_none(item.get("distance"))
             seconds = _decimal_or_none(item.get("seconds"))
             reps = int(item.get("reps") or 0)
             values = _norm_values((weight_kg, reps, rpe, distance, seconds))
-            group = by_time.get(tkey, {})
-            if values in group:
-                continue
-            orders_taken = set(group.values())
-            order = item["set_order"]
-            if order in orders_taken:
-                order = max(orders_taken) + 1
-            rows.append(
-                WorkoutSet(
-                    owner=user,
-                    session=session,
-                    exercise=exercise,
-                    set_order=order,
-                    weight_kg=weight_kg,
-                    reps=reps,
-                    rpe=rpe,
-                    distance=distance,
-                    seconds=seconds,
-                    set_time=set_time,
-                    volume_kg=_decimal_or_none(item.get("volume_kg")) or Decimal(0),
-                    est_1rm_kg=_decimal_or_none(item.get("est_1rm_kg")),
+            tkey = (session.id, exercise.id, set_time)
+            items_by_time.setdefault(tkey, []).append((item, exercise, set_time, values))
+
+        rows = []
+        for tkey, items in items_by_time.items():
+            stored_here = [key for key in stored if key[:2] + (key[3],) == tkey]
+            by_values = {}
+            for skey in stored_here:
+                by_values.setdefault(stored[skey], []).append(skey[2])
+            reserved = {item["set_order"] for item, _ex, _st, _v in items}
+            taken = {skey[2] for skey in stored_here}
+            consumed = set()
+            deferred = []
+            for item, exercise, set_time, values in items:
+                order = item["set_order"]
+                if order in by_values.get(values, []) and order not in consumed:
+                    consumed.add(order)
+                    continue
+                deferred.append((item, exercise, set_time, values))
+            for item, exercise, set_time, values in deferred:
+                candidates = [o for o in by_values.get(values, []) if o not in consumed]
+                if candidates:
+                    consumed.add(candidates[0])
+                    continue
+                order = item["set_order"]
+                if order in taken or order in consumed:
+                    order = max(reserved | taken | consumed) + 1
+                taken.add(order)
+                rows.append(
+                    WorkoutSet(
+                        owner=user,
+                        session=session,
+                        exercise=exercise,
+                        set_order=order,
+                        weight_kg=_decimal_or_none(item.get("weight_kg")),
+                        reps=int(item.get("reps") or 0),
+                        rpe=_decimal_or_none(item.get("rpe")),
+                        distance=_decimal_or_none(item.get("distance")),
+                        seconds=_decimal_or_none(item.get("seconds")),
+                        set_time=set_time,
+                        volume_kg=_decimal_or_none(item.get("volume_kg")) or Decimal(0),
+                        est_1rm_kg=_decimal_or_none(item.get("est_1rm_kg")),
+                    )
                 )
-            )
         WorkoutSet.objects.bulk_create(rows)
         aggregate = WorkoutSet.objects.filter(session_id=session.id).aggregate(
             count=Count("id"), volume=Sum("volume_kg"), first=Min("set_time")

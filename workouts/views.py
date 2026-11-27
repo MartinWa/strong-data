@@ -327,6 +327,8 @@ def undo_delete(request):
         return redirect("sessions")
     payload = pending.load_stash(stash_id)
     if payload is None or payload.get("owner_id") != request.user.id:
+        if request.session.get(UNDO_STASH_KEY) == stash_id:
+            request.session.pop(UNDO_STASH_KEY, None)
         messages.error(request, "The undo backup expired or was not found.")
         return redirect("sessions")
     try:
@@ -340,6 +342,8 @@ def undo_delete(request):
         return redirect("sessions")
     except KeyError, TypeError, ValueError, InvalidOperation:
         pending.discard_stash(stash_id)
+        if request.session.get(UNDO_STASH_KEY) == stash_id:
+            request.session.pop(UNDO_STASH_KEY, None)
         messages.error(request, "The undo backup could not be read.")
         return redirect("sessions")
     pending.discard_stash(stash_id)
