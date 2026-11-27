@@ -1,4 +1,5 @@
 from datetime import date, timedelta
+from decimal import Decimal
 from pathlib import Path
 
 import pytest
@@ -397,7 +398,7 @@ def test_oversized_session_requires_confirmation_before_deleting(client, monkeyp
     response = client.post(reverse("delete_session", args=[session.pk]))
 
     assert response.status_code == 302
-    assert response.url == f"{reverse('sessions')}?confirm_delete={session.pk}"
+    assert response.url == f"{reverse('sessions')}?confirm_delete={session.pk}&open={session.pk}"
     assert WorkoutSession.objects.filter(pk=session.pk).exists()
     confirming = client.get(reverse("sessions"), {"confirm_delete": session.pk}).content.decode()
     assert "Really delete this session (no undo)" in confirming
@@ -407,7 +408,97 @@ def test_oversized_session_requires_confirmation_before_deleting(client, monkeyp
     )
 
     assert not WorkoutSession.objects.filter(pk=session.pk).exists()
-    assert "No undo backup was kept because the session is too large." in response.content.decode()
+    assert "No undo backup was kept." in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_delete_aborts_when_the_backup_cannot_be_written(client, monkeypatch):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    monkeypatch.setattr(pending, "save_stash", lambda *args: False)
+
+    response = client.post(reverse("delete_session", args=[session.pk]), follow=True)
+
+    assert WorkoutSession.objects.filter(pk=session.pk).exists()
+    assert "The undo backup could not be written, so the session was not deleted." in (
+        response.content.decode()
+    )
+
+    response = client.post(
+        reverse("delete_session", args=[session.pk]), {"confirm": "1"}, follow=True
+    )
+
+    assert not WorkoutSession.objects.filter(pk=session.pk).exists()
+    assert "No undo backup was kept." in response.content.decode()
+
+
+@pytest.mark.django_db
+def test_oversized_delete_confirmation_keeps_the_current_page_and_filters(client, monkeypatch):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    rows = "\n".join(
+        f"2026-01-{day:02d} 09:00:00,Push Day,54m,Bench Press,1,80,5,0,0,8" for day in range(1, 27)
+    )
+    import_workouts_csv(user, HEADER + rows + "\n")
+    client.force_login(user)
+    monkeypatch.setattr(pending, "STASH_MAX_BYTES", 10)
+    target = WorkoutSession.objects.filter(owner=user).order_by("session_date", "id").first()
+
+    response = client.post(f"{reverse('delete_session', args=[target.pk])}?page=2&q=Push")
+
+    assert response.status_code == 302
+    assert "page=2" in response.url
+    assert "q=Push" in response.url
+    assert f"confirm_delete={target.pk}" in response.url
+    assert f"open={target.pk}" in response.url
+    content = client.get(response.url).content.decode()
+    assert "Really delete this session (no undo)" in content
+    assert content.count("data-print-open open>") == 1
+
+
+@pytest.mark.django_db
+def test_undo_after_partial_reimport_does_not_duplicate_sets(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    duplicate = HEADER + (
+        "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,80,5,0,0,8\n"
+        "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,90,5,0,0,8\n"
+    )
+    import_workouts_csv(user, duplicate)
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    stash_id = client.session["undo_stash"]
+    fragment = HEADER + "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,90,5,0,0,8\n"
+    import_workouts_csv(user, fragment)
+
+    client.post(reverse("undo_delete"), {"stash_id": stash_id})
+
+    sets = WorkoutSet.objects.filter(owner=user)
+    assert sets.count() == 2
+    assert sorted(sets.values_list("weight_kg", flat=True)) == [
+        Decimal("80.00"),
+        Decimal("90.00"),
+    ]
+
+
+@pytest.mark.django_db
+def test_undo_volume_overflow_keeps_the_backup_for_retry(client):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    big = HEADER + "2026-01-05 08:30:00,Push Day,54m,Bench,1,600000,10000,0,0,8\n"
+    import_workouts_csv(user, big)
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    stash_id = client.session["undo_stash"]
+    fragment = HEADER + "2026-01-05 08:30:00,Push Day,54m,Bench,1,900000,10000,0,0,8\n"
+    import_workouts_csv(user, fragment)
+
+    response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
+
+    assert "cannot be restored yet" in response.content.decode()
+    assert pending.load_stash(stash_id) is not None
+    assert client.session.get("undo_stash") == stash_id
+    assert WorkoutSet.objects.filter(owner=user).count() == 1
 
 
 @pytest.mark.django_db

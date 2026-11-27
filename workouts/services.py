@@ -119,37 +119,51 @@ def _session_id(ref):
     return ref["id"] if isinstance(ref, dict) else ref.id
 
 
-def _classify(file_sessions, session_refs, exercises, stored, by_time, zone):
-    """Decide per file set: "skip" (stored or exact duplicate), "conflict"
-    (stored key, different values) or "add" (with a collision-free set_order).
+def _classify(file_sessions, session_ids, exercise_ids, stored, by_time, zone):
+    """Decide per file set: "skip" (already stored, possibly under a renumbered
+    order, or an exact in-file duplicate), "conflict" (stored key with
+    different values) or "add" (with a collision-free set order).
+
+    Each stored timestamp group is read once; decisions carry
+    (session_key, item, set_order, decision, values, set_time).
     """
     decisions = []
-    state_by_time = {}
+    orders_by_time = {}
+    values_by_time = {}
+    assigned = {}
     for _session, sets, key in file_sessions:
-        session_id = _session_id(session_refs[key])
+        session_id = session_ids[key]
         for item in sets:
-            exercise = exercises[item.exercise_name]
-            set_time = _file_set_time(item, zone)
-            tkey = (session_id, exercise.id, set_time)
+            exercise_id = exercise_ids.get(item.exercise_name)
             values = _norm_values(
                 (item.weight_kg, item.reps, item.rpe, item.distance, item.seconds)
             )
-            state = state_by_time.setdefault(tkey, {"orders": set(), "values": {}})
-            if tkey in by_time:
-                state["values"].update(by_time[tkey])
-                state["orders"].update(by_time[tkey].values())
-            if values in state["values"]:
-                decisions.append((key, item, item.set_order, "skip", values))
-                continue
+            set_time = _file_set_time(item, zone)
+            tkey = (session_id, exercise_id, set_time)
+            if tkey not in orders_by_time:
+                group = by_time.get(tkey, {})
+                orders_by_time[tkey] = set(group.values())
+                values_by_time[tkey] = set(group)
+            orders = orders_by_time[tkey]
+            values_seen = values_by_time[tkey]
             order = item.set_order
-            if (session_id, exercise.id, order, set_time) in stored:
-                decisions.append((key, item, order, "conflict", values))
+            set_key = (session_id, exercise_id, order, set_time)
+            if set_key in stored:
+                if stored[set_key] == values or values in values_seen:
+                    decisions.append((key, item, order, "skip", values, set_time))
+                else:
+                    decisions.append((key, item, order, "conflict", values, set_time))
                 continue
-            if order in state["orders"]:
-                order = max(state["orders"]) + 1
-            state["orders"].add(order)
-            state["values"][values] = order
-            decisions.append((key, item, order, "add", values))
+            if order in orders:
+                if (set_key in assigned and assigned[set_key] == values) or values in values_seen:
+                    decisions.append((key, item, order, "skip", values, set_time))
+                    continue
+                order = max(orders) + 1
+                set_key = (session_id, exercise_id, order, set_time)
+            assigned[set_key] = values
+            orders.add(order)
+            values_seen.add(values)
+            decisions.append((key, item, order, "add", values, set_time))
     return decisions
 
 
@@ -197,14 +211,16 @@ def _merge_once(user, parsed: ParsedWorkouts) -> ImportResult:
         for (_session, _sets, key), row in zip(pending, created, strict=True):
             session_refs[key] = row
 
-        stored_sets, by_time = _stored_sets([_session_id(ref) for ref in session_refs.values()])
-        decisions = _classify(file_sessions, session_refs, exercises, stored_sets, by_time, zone)
+        session_ids = {key: _session_id(ref) for key, ref in session_refs.items()}
+        exercise_ids = {name: exercise.id for name, exercise in exercises.items()}
+        stored_sets, by_time = _stored_sets(list(session_ids.values()))
+        decisions = _classify(file_sessions, session_ids, exercise_ids, stored_sets, by_time, zone)
 
         added_sets = 0
         skipped_sets = 0
         conflicted = 0
         set_rows = []
-        for key, item, order, decision, _values in decisions:
+        for key, item, order, decision, _values, _set_time in decisions:
             if decision == "skip":
                 skipped_sets += 1
                 continue
@@ -216,7 +232,7 @@ def _merge_once(user, parsed: ParsedWorkouts) -> ImportResult:
             set_rows.append(
                 WorkoutSet(
                     owner=user,
-                    session_id=_session_id(session_refs[key]),
+                    session_id=session_ids[key],
                     exercise=exercises[item.exercise_name],
                     set_order=order,
                     weight_kg=item.weight_kg,
@@ -293,82 +309,58 @@ def compare_import(user, parsed: ParsedWorkouts) -> dict:
     ]
     pairs = sorted({key for _session, _sets, key in file_sessions})
     stored_sessions = _stored_sessions(user, pairs)
+    session_ids = {
+        key: (stored_sessions[key]["id"] if key in stored_sessions else None) for key in pairs
+    }
     exercise_ids = {}
     for chunk in _chunked(parsed.exercises):
         exercise_ids.update(
             Exercise.objects.filter(owner=user, name__in=chunk).values_list("name", "id")
         )
-    stored_sets, by_time = (
-        _stored_sets([ref["id"] for ref in stored_sessions.values()])
-        if stored_sessions
-        else ({}, {})
-    )
+    existing_ids = [ref["id"] for ref in stored_sessions.values()]
+    stored_sets, by_time = _stored_sets(existing_ids) if existing_ids else ({}, {})
 
-    new_sessions = 0
-    existing_sessions = 0
+    decisions = _classify(file_sessions, session_ids, exercise_ids, stored_sets, by_time, zone)
+
+    new_sessions = sum(1 for session_id in session_ids.values() if session_id is None)
+    existing_sessions = len(session_ids) - new_sessions
     new_sets = 0
     existing_sets = 0
     conflicted = 0
     conflicts = []
-    state_by_time = {}
-    for session, sets, key in file_sessions:
-        if key in stored_sessions:
-            existing_sessions += 1
-            session_id = stored_sessions[key]["id"]
-        else:
-            new_sessions += 1
-            session_id = None
-        for item in sets:
-            exercise_id = exercise_ids.get(item.exercise_name)
-            if session_id is None or exercise_id is None:
-                new_sets += 1
-                continue
-            set_time = _file_set_time(item, zone)
-            tkey = (session_id, exercise_id, set_time)
-            values = _norm_values(
-                (item.weight_kg, item.reps, item.rpe, item.distance, item.seconds)
-            )
-            state = state_by_time.setdefault(tkey, {"orders": set(), "values": {}})
-            if tkey in by_time:
-                state["values"].update(by_time[tkey])
-                state["orders"].update(by_time[tkey].values())
-            if values in state["values"]:
-                existing_sets += 1
-                continue
-            order = item.set_order
-            set_key = (session_id, exercise_id, order, set_time)
-            if set_key in stored_sets:
-                existing_sets += 1
-                conflicted += 1
-                if len(conflicts) < CONFLICT_SAMPLE_LIMIT:
-                    stored_values = stored_sets[set_key]
-                    changes = [
-                        {
-                            "field": field,
-                            "label": FIELD_LABELS[field],
-                            "stored": stored_value,
-                            "file": file_value,
-                        }
-                        for field, stored_value, file_value in zip(
-                            VALUE_FIELDS, stored_values, values, strict=True
-                        )
-                        if stored_value != file_value
-                    ]
-                    conflicts.append(
-                        {
-                            "session_date": session.session_date,
-                            "workout_name": session.workout_name,
-                            "exercise_name": item.exercise_name,
-                            "set_order": order,
-                            "changes": changes,
-                        }
+    for key, item, order, decision, values, set_time in decisions:
+        if decision == "skip":
+            existing_sets += 1
+            continue
+        if decision == "conflict":
+            existing_sets += 1
+            conflicted += 1
+            if len(conflicts) < CONFLICT_SAMPLE_LIMIT:
+                set_key = (session_ids[key], exercise_ids[item.exercise_name], order, set_time)
+                stored_values = stored_sets[set_key]
+                changes = [
+                    {
+                        "field": field,
+                        "label": FIELD_LABELS[field],
+                        "stored": stored_value,
+                        "file": file_value,
+                    }
+                    for field, stored_value, file_value in zip(
+                        VALUE_FIELDS, stored_values, values, strict=True
                     )
-                continue
-            if order in state["orders"]:
-                order = max(state["orders"]) + 1
-            state["orders"].add(order)
-            state["values"][values] = order
-            new_sets += 1
+                    if stored_value != file_value
+                ]
+                conflicts.append(
+                    {
+                        "session_date": key[0],
+                        "workout_name": key[1],
+                        "exercise_name": item.exercise_name,
+                        "set_order": order,
+                        "changes": changes,
+                    }
+                )
+            continue
+        new_sets += 1
     dates = [session.session_date for session, _sets, _key in file_sessions]
     stored_range = WorkoutSession.objects.filter(owner=user).aggregate(
         first=Min("session_date"), last=Max("session_date")
@@ -442,24 +434,36 @@ def restore_stash(user, payload: dict) -> int:
                 "total_volume_kg": Decimal(0),
             },
         )
-        existing = _stored_sets([session.id])[0]
+        by_time = _stored_sets([session.id])[1]
         rows = []
         for item in payload["sets"]:
             exercise, _ = Exercise.objects.get_or_create(owner=user, name=item["exercise_name"])
-            set_time = _parse_aware(item["set_time"], zone)
-            if (session.id, exercise.id, item["set_order"], _utc(set_time)) in existing:
+            set_time = _utc(_parse_aware(item["set_time"], zone))
+            tkey = (session.id, exercise.id, set_time)
+            weight_kg = _decimal_or_none(item.get("weight_kg"))
+            rpe = _decimal_or_none(item.get("rpe"))
+            distance = _decimal_or_none(item.get("distance"))
+            seconds = _decimal_or_none(item.get("seconds"))
+            reps = int(item.get("reps") or 0)
+            values = _norm_values((weight_kg, reps, rpe, distance, seconds))
+            group = by_time.get(tkey, {})
+            if values in group:
                 continue
+            orders_taken = set(group.values())
+            order = item["set_order"]
+            if order in orders_taken:
+                order = max(orders_taken) + 1
             rows.append(
                 WorkoutSet(
                     owner=user,
                     session=session,
                     exercise=exercise,
-                    set_order=item["set_order"],
-                    weight_kg=_decimal_or_none(item.get("weight_kg")),
-                    reps=int(item.get("reps") or 0),
-                    rpe=_decimal_or_none(item.get("rpe")),
-                    distance=_decimal_or_none(item.get("distance")),
-                    seconds=_decimal_or_none(item.get("seconds")),
+                    set_order=order,
+                    weight_kg=weight_kg,
+                    reps=reps,
+                    rpe=rpe,
+                    distance=distance,
+                    seconds=seconds,
                     set_time=set_time,
                     volume_kg=_decimal_or_none(item.get("volume_kg")) or Decimal(0),
                     est_1rm_kg=_decimal_or_none(item.get("est_1rm_kg")),

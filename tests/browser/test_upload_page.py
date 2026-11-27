@@ -188,6 +188,24 @@ def test_preview_reports_conflicts_with_the_changed_field_shown(client):
 
 
 @pytest.mark.django_db
+def test_preview_counts_match_what_confirm_inserts_for_duplicate_rows(client):
+    user = signed_in(client)
+    import_workouts_csv(user, TWO_SESSIONS)
+    duplicate = (
+        HEADER
+        + "2026-03-01 10:00:00,Legs Day,60m,Squat,1,100,5,0,0,9\n"
+        + "2026-03-01 10:00:00,Legs Day,60m,Squat,1,100,5,0,0,9\n"
+    )
+
+    upload(client, duplicate)
+    content = client.get(reverse("preview")).content.decode()
+
+    assert (
+        "Confirming adds 1 session and 1 set; 0 sessions and 1 set are already stored." in content
+    )
+
+
+@pytest.mark.django_db
 def test_preview_on_a_first_run_is_not_destructive(client):
     signed_in(client)
 

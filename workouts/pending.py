@@ -105,9 +105,12 @@ def save_stash(stash_id: str, payload: dict) -> bool:
     raw = json.dumps(payload)
     if len(raw.encode("utf-8")) > STASH_MAX_BYTES:
         return False
-    undo_dir().mkdir(parents=True, exist_ok=True, mode=0o700)
-    path.write_text(raw, encoding="utf-8")
-    path.chmod(0o600)
+    try:
+        undo_dir().mkdir(parents=True, exist_ok=True, mode=0o700)
+        path.write_text(raw, encoding="utf-8")
+        path.chmod(0o600)
+    except OSError:
+        return False
     return True
 
 

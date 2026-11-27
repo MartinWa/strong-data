@@ -291,22 +291,29 @@ def delete_sessions(request):
 @require_POST
 def delete_session(request, pk):
     session = get_object_or_404(WorkoutSession, owner=request.user, pk=pk)
+    stash_id = secrets.token_urlsafe(16)
+    confirmed = request.POST.get("confirm") == "1"
     with transaction.atomic():
         payload = stash_session(request.user, session)
         too_big = len(json.dumps(payload).encode("utf-8")) > pending.STASH_MAX_BYTES
-        if too_big and request.POST.get("confirm") != "1":
-            return redirect(f"{reverse('sessions')}?confirm_delete={session.pk}")
+        if too_big and not confirmed:
+            params = request.GET.copy()
+            params["confirm_delete"] = str(session.pk)
+            params["open"] = str(session.pk)
+            return redirect(f"{reverse('sessions')}?{params.urlencode()}")
+        stashed = not too_big and pending.save_stash(stash_id, payload)
+        if not stashed and not confirmed:
+            messages.error(
+                request, "The undo backup could not be written, so the session was not deleted."
+            )
+            return redirect("sessions")
         set_total = session.sets.count()
         session.delete()
-    stash_id = secrets.token_urlsafe(16)
-    stashed = pending.save_stash(stash_id, payload)
     if stashed:
         request.session[UNDO_STASH_KEY] = stash_id
     message = f"Deleted {session} ({set_total} set{'' if set_total == 1 else 's'})."
-    if too_big:
-        message += " No undo backup was kept because the session is too large."
-    elif not stashed:
-        message += " No undo is available for this delete."
+    if not stashed:
+        message += " No undo backup was kept."
     messages.success(request, message)
     return redirect("sessions")
 
@@ -315,8 +322,6 @@ def delete_session(request, pk):
 @require_POST
 def undo_delete(request):
     stash_id = request.POST.get("stash_id", "")
-    if request.session.get(UNDO_STASH_KEY) == stash_id:
-        request.session.pop(UNDO_STASH_KEY, None)
     if not stash_id:
         messages.info(request, "There is nothing to undo.")
         return redirect("sessions")
@@ -327,9 +332,10 @@ def undo_delete(request):
     try:
         added = restore_stash(request.user, payload)
     except ImportLimitError:
-        pending.discard_stash(stash_id)
         messages.error(
-            request, "The undo backup cannot be restored: the combined volume is out of range."
+            request,
+            "The undo backup cannot be restored yet: the combined volume is out of range. "
+            "Remove the overlapping session and try again; the backup is kept until it expires.",
         )
         return redirect("sessions")
     except KeyError, TypeError, ValueError, InvalidOperation:
@@ -337,6 +343,8 @@ def undo_delete(request):
         messages.error(request, "The undo backup could not be read.")
         return redirect("sessions")
     pending.discard_stash(stash_id)
+    if request.session.get(UNDO_STASH_KEY) == stash_id:
+        request.session.pop(UNDO_STASH_KEY, None)
     messages.success(
         request,
         f"Restored {payload['session']['workout_name']} "

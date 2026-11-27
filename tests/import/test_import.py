@@ -228,6 +228,25 @@ def test_exact_duplicate_set_rows_in_one_file_store_one_row():
 
 
 @pytest.mark.django_db
+def test_same_timestamp_different_set_order_are_distinct_sets():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    text = csv_text(
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:30:00,Push Day,54m,Bench,2,80,5,0,0,8",
+    )
+
+    result = import_workouts_csv(user, text)
+
+    assert result.added_sets == 2
+    assert sorted(WorkoutSet.objects.filter(owner=user).values_list("set_order", flat=True)) == [
+        1,
+        2,
+    ]
+    reimport = import_workouts_csv(user, text)
+    assert (reimport.added_sets, reimport.skipped_sets, reimport.conflicted) == (0, 2, 0)
+
+
+@pytest.mark.django_db
 def test_same_key_different_values_in_one_file_are_both_stored_and_reimport_is_clean():
     user = get_user_model().objects.create_user(username="alice", password="x")
     duplicate = csv_text(
