@@ -169,10 +169,10 @@ def test_preview_counts_new_and_existing_sessions_and_sets(client):
 
 
 @pytest.mark.django_db
-def test_preview_reports_conflicts_with_stored_values_kept(client):
+def test_preview_reports_conflicts_with_the_changed_field_shown(client):
     user = signed_in(client)
     import_workouts_csv(user, TWO_SESSIONS)
-    conflicting = HEADER + "2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,90,5,0,0,8\n"
+    conflicting = HEADER + "2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,80,5,0,0,9\n"
 
     upload(client, conflicting)
     content = client.get(reverse("preview")).content.decode()
@@ -184,6 +184,7 @@ def test_preview_reports_conflicts_with_stored_values_kept(client):
     conflicts_card = content[content.index("<h2>Conflicts</h2>") :]
     assert "Bench Press (Barbell)" in conflicts_card
     assert "Push Day" in conflicts_card
+    assert "rpe: 8 → 9" in conflicts_card
 
 
 @pytest.mark.django_db

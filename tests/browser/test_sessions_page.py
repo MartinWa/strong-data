@@ -354,8 +354,9 @@ def test_undo_restores_the_deleted_session_and_its_sets(client):
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
     assert not WorkoutSession.objects.filter(owner=user).exists()
+    stash_id = client.session["undo_stash"]
 
-    response = client.post(reverse("undo_delete"), follow=True)
+    response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
 
     assert response.status_code == 200
     restored = WorkoutSession.objects.get(owner=user)
@@ -368,14 +369,57 @@ def test_undo_restores_the_deleted_session_and_its_sets(client):
 
 
 @pytest.mark.django_db
+def test_undo_restores_the_session_the_form_points_at(client):
+    user = session_with_data()
+    import_workouts_csv(user, PULL_DAY_CSV)
+    client.force_login(user)
+    axlar = WorkoutSession.objects.get(owner=user, workout_name="Axlar")
+    pull = WorkoutSession.objects.get(owner=user, workout_name="Pull Day")
+    client.post(reverse("delete_session", args=[axlar.pk]))
+    stash_a = client.session["undo_stash"]
+    client.post(reverse("delete_session", args=[pull.pk]))
+    stash_b = client.session["undo_stash"]
+
+    client.post(reverse("undo_delete"), {"stash_id": stash_a})
+
+    assert WorkoutSession.objects.filter(owner=user, workout_name="Axlar").exists()
+    assert not WorkoutSession.objects.filter(owner=user, workout_name="Pull Day").exists()
+    assert pending.load_stash(stash_b) is not None
+
+
+@pytest.mark.django_db
+def test_oversized_session_requires_confirmation_before_deleting(client, monkeypatch):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    monkeypatch.setattr(pending, "STASH_MAX_BYTES", 10)
+
+    response = client.post(reverse("delete_session", args=[session.pk]))
+
+    assert response.status_code == 302
+    assert response.url == f"{reverse('sessions')}?confirm_delete={session.pk}"
+    assert WorkoutSession.objects.filter(pk=session.pk).exists()
+    confirming = client.get(reverse("sessions"), {"confirm_delete": session.pk}).content.decode()
+    assert "Really delete this session (no undo)" in confirming
+
+    response = client.post(
+        reverse("delete_session", args=[session.pk]), {"confirm": "1"}, follow=True
+    )
+
+    assert not WorkoutSession.objects.filter(pk=session.pk).exists()
+    assert "No undo backup was kept because the session is too large." in response.content.decode()
+
+
+@pytest.mark.django_db
 def test_undo_after_a_reimport_does_not_duplicate_rows(client):
     user = session_with_data()
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
+    stash_id = client.session["undo_stash"]
     import_workouts_csv(user, GROUPED_CSV)
 
-    client.post(reverse("undo_delete"))
+    client.post(reverse("undo_delete"), {"stash_id": stash_id})
 
     assert WorkoutSession.objects.filter(owner=user).count() == 1
     assert WorkoutSet.objects.filter(owner=user).count() == 4
@@ -399,9 +443,10 @@ def test_undo_with_a_missing_stash_reports_expiry(client):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    pending.discard_stash(client.session["undo_stash"])
+    stash_id = client.session["undo_stash"]
+    pending.discard_stash(stash_id)
 
-    response = client.post(reverse("undo_delete"), follow=True)
+    response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
 
     assert response.status_code == 200
     assert "The undo backup expired or was not found." in response.content.decode()
@@ -414,9 +459,10 @@ def test_undo_with_a_corrupt_stash_reports_it_unreadable(client):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    pending.save_stash(client.session["undo_stash"], {"session": {}})
+    stash_id = client.session["undo_stash"]
+    pending.save_stash(stash_id, {"owner_id": user.id, "session": {}})
 
-    response = client.post(reverse("undo_delete"), follow=True)
+    response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
 
     assert response.status_code == 200
     assert "The undo backup could not be read." in response.content.decode()

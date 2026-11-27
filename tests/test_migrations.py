@@ -93,7 +93,7 @@ def test_core_splits_into_abs_for_flexion_exercises():
 
 
 @pytest.mark.django_db(transaction=True)
-def test_duplicate_set_keys_are_deduped_and_the_constraint_is_enforced():
+def test_duplicate_set_keys_are_renumbered_or_dropped_and_totals_recomputed():
     executor = MigrationExecutor(connection)
     executor.migrate(DEDUP_BEFORE)
     apps = executor.loader.project_state(DEDUP_BEFORE).apps
@@ -108,6 +108,8 @@ def test_duplicate_set_keys_are_deduped_and_the_constraint_is_enforced():
         program="Push Day",
         workout_name="Push Day #1",
         start_time=datetime(2026, 1, 5, 8, 0, tzinfo=UTC),
+        set_count=99,
+        total_volume_kg=Decimal("12345.00"),
     )
     exercise = Exercise.objects.create(owner_id=user.pk, name="Bench Press (Barbell)")
     shared = {
@@ -117,25 +119,37 @@ def test_duplicate_set_keys_are_deduped_and_the_constraint_is_enforced():
         "set_order": 1,
         "set_time": datetime(2026, 1, 5, 8, 30, tzinfo=UTC),
         "reps": 5,
-        "volume_kg": Decimal("400.00"),
     }
-    first = WorkoutSet.objects.create(**shared, weight_kg=Decimal("80.00"))
-    WorkoutSet.objects.create(**shared, weight_kg=Decimal("82.00"))
+    first = WorkoutSet.objects.create(
+        **shared, weight_kg=Decimal("80.00"), volume_kg=Decimal("400.00")
+    )
+    WorkoutSet.objects.create(**shared, weight_kg=Decimal("82.00"), volume_kg=Decimal("410.00"))
+    WorkoutSet.objects.create(**shared, weight_kg=Decimal("82.00"), volume_kg=Decimal("410.00"))
     other = WorkoutSet.objects.create(
-        **{**shared, "set_order": 2, "set_time": datetime(2026, 1, 5, 8, 35, tzinfo=UTC)}
+        **{**shared, "set_order": 2, "set_time": datetime(2026, 1, 5, 8, 35, tzinfo=UTC)},
+        weight_kg=Decimal("80.00"),
+        volume_kg=Decimal("400.00"),
     )
 
     executor = MigrationExecutor(connection)
     executor.migrate(DEDUP_AFTER)
     apps = executor.loader.project_state(DEDUP_AFTER).apps
     WorkoutSet = apps.get_model("workouts", "WorkoutSet")
+    WorkoutSession = apps.get_model("workouts", "WorkoutSession")
 
     rows = list(WorkoutSet.objects.filter(session_id=session.pk).order_by("id"))
-    assert [row.pk for row in rows] == [first.pk, other.pk]
+    assert [row.pk for row in rows] == [first.pk, rows[1].pk, other.pk]
+    assert len(rows) == 3
+    assert rows[0].set_order == 1
     assert rows[0].weight_kg == Decimal("80.00")
+    assert rows[1].weight_kg == Decimal("82.00")
+    assert rows[1].set_order == 3
+    session = WorkoutSession.objects.get(pk=session.pk)
+    assert session.set_count == 3
+    assert session.total_volume_kg == Decimal("1210.00")
     assert any(
         constraint.name == "uniq_set_session_exercise_order_time"
         for constraint in WorkoutSet._meta.constraints
     )
     with pytest.raises(IntegrityError), transaction.atomic():
-        WorkoutSet.objects.create(**shared, weight_kg=Decimal("90.00"))
+        WorkoutSet.objects.create(**shared, weight_kg=Decimal("90.00"), volume_kg=Decimal("450.00"))

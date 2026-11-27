@@ -9,7 +9,7 @@ from django.test import override_settings
 from parsing import parse_workouts
 from workouts import services
 from workouts.models import ExerciseMeta, WorkoutSession, WorkoutSet
-from workouts.services import EmptyImportError, import_workouts_csv
+from workouts.services import EmptyImportError, ImportLimitError, import_workouts_csv
 
 HEADER = "Date,Workout Name,Duration,Exercise Name,Set Order,Weight,Reps,Distance,Seconds,RPE"
 
@@ -214,7 +214,21 @@ def test_conflicting_set_values_are_skipped_and_counted_as_conflicted():
 
 
 @pytest.mark.django_db
-def test_in_file_duplicate_set_keys_store_one_row():
+def test_exact_duplicate_set_rows_in_one_file_store_one_row():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    duplicate = csv_text(
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
+        "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
+    )
+
+    result = import_workouts_csv(user, duplicate)
+
+    assert result.added_sets == 1
+    assert WorkoutSet.objects.filter(owner=user).count() == 1
+
+
+@pytest.mark.django_db
+def test_same_key_different_values_in_one_file_are_both_stored_and_reimport_is_clean():
     user = get_user_model().objects.create_user(username="alice", password="x")
     duplicate = csv_text(
         "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
@@ -222,10 +236,77 @@ def test_in_file_duplicate_set_keys_store_one_row():
     )
 
     result = import_workouts_csv(user, duplicate)
+    assert result.added_sets == 2
+    assert sorted(WorkoutSet.objects.filter(owner=user).values_list("set_order", flat=True)) == [
+        1,
+        2,
+    ]
 
-    assert result.added_sets == 1
+    reimport = import_workouts_csv(user, duplicate)
+    assert (reimport.added_sets, reimport.skipped_sets, reimport.conflicted) == (0, 2, 0)
+
+
+@pytest.mark.django_db
+def test_values_are_compared_at_stored_precision():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    import_workouts_csv(user, FIRST_EXPORT)
+    variant = (
+        HEADER
+        + "\n"
+        + "\n".join(
+            row.replace(",80,5,0,0,8.0", ",80.004,5,0,0,8.0")
+            for row in FIRST_EXPORT.splitlines()[1:]
+        )
+        + "\n"
+    )
+
+    result = import_workouts_csv(user, variant)
+
+    assert (result.added_sets, result.skipped_sets, result.conflicted) == (0, 3, 0)
+
+
+@pytest.mark.django_db
+def test_fall_back_hour_set_times_reimport_cleanly():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    text = csv_text("2026-10-25 02:30:00,Fall Back,54m,Bench,1,80,5,0,0,8")
+
+    with override_settings(TIME_ZONE="Europe/Stockholm"):
+        first = import_workouts_csv(user, text)
+        reimport = import_workouts_csv(user, text)
+
+    assert first.added_sets == 1
+    assert (reimport.added_sets, reimport.skipped_sets, reimport.conflicted) == (0, 1, 0)
+
+
+@pytest.mark.django_db
+def test_merged_volume_beyond_the_field_limit_is_rejected():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    big_first = csv_text("2026-01-05 08:30:00,Push Day,54m,Bench,1,600000,10000,0,0,8")
+    big_second = csv_text("2026-01-05 08:40:00,Push Day,54m,Bench,2,600000,10000,0,0,8")
+    import_workouts_csv(user, big_first)
+
+    with pytest.raises(ImportLimitError):
+        import_workouts_csv(user, big_second)
+
     assert WorkoutSet.objects.filter(owner=user).count() == 1
-    assert WorkoutSet.objects.get(owner=user).weight_kg == Decimal("80.00")
+    session = WorkoutSession.objects.get(owner=user)
+    assert session.set_count == 1
+
+
+@pytest.mark.django_db
+def test_compare_import_chunks_the_exercise_lookup():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    rows = [
+        f"2026-01-05 {index // 60:02d}:{index % 60:02d}:00,"
+        f"Push Day,54m,Exercise {index},1,80,5,0,0,8"
+        for index in range(600)
+    ]
+
+    comparison = services.compare_import(user, parse_workouts(csv_text(*rows)))
+
+    assert comparison["new_sessions"] == 1
+    assert comparison["new_sets"] == 600
+    assert comparison["conflicted"] == 0
 
 
 @pytest.mark.django_db

@@ -1,5 +1,6 @@
 import hashlib
 import hmac
+import json
 import secrets
 import time
 from datetime import date
@@ -34,6 +35,7 @@ from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from .reports import build_exercise_report, build_report
 from .services import (
     EmptyImportError,
+    ImportLimitError,
     compare_import,
     import_workouts_csv,
     restore_stash,
@@ -165,7 +167,7 @@ def preview(request):
             return _expired(request, import_id)
         try:
             result = import_workouts_csv(request.user, raw)
-        except (EmptyImportError, InvalidCSVError) as exc:
+        except (EmptyImportError, ImportLimitError, InvalidCSVError) as exc:
             messages.error(request, str(exc))
             _discard_pending(request, import_id)
             return redirect("upload")
@@ -289,15 +291,21 @@ def delete_sessions(request):
 @require_POST
 def delete_session(request, pk):
     session = get_object_or_404(WorkoutSession, owner=request.user, pk=pk)
+    with transaction.atomic():
+        payload = stash_session(request.user, session)
+        too_big = len(json.dumps(payload).encode("utf-8")) > pending.STASH_MAX_BYTES
+        if too_big and request.POST.get("confirm") != "1":
+            return redirect(f"{reverse('sessions')}?confirm_delete={session.pk}")
+        set_total = session.sets.count()
+        session.delete()
     stash_id = secrets.token_urlsafe(16)
-    stashed = pending.save_stash(stash_id, stash_session(request.user, session))
+    stashed = pending.save_stash(stash_id, payload)
     if stashed:
         request.session[UNDO_STASH_KEY] = stash_id
-    set_total = session.sets.count()
-    with transaction.atomic():
-        session.delete()
     message = f"Deleted {session} ({set_total} set{'' if set_total == 1 else 's'})."
-    if not stashed:
+    if too_big:
+        message += " No undo backup was kept because the session is too large."
+    elif not stashed:
         message += " No undo is available for this delete."
     messages.success(request, message)
     return redirect("sessions")
@@ -306,16 +314,24 @@ def delete_session(request, pk):
 @login_required
 @require_POST
 def undo_delete(request):
-    stash_id = request.session.pop(UNDO_STASH_KEY, None)
+    stash_id = request.POST.get("stash_id", "")
+    if request.session.get(UNDO_STASH_KEY) == stash_id:
+        request.session.pop(UNDO_STASH_KEY, None)
     if not stash_id:
         messages.info(request, "There is nothing to undo.")
         return redirect("sessions")
     payload = pending.load_stash(stash_id)
-    if payload is None:
+    if payload is None or payload.get("owner_id") != request.user.id:
         messages.error(request, "The undo backup expired or was not found.")
         return redirect("sessions")
     try:
         added = restore_stash(request.user, payload)
+    except ImportLimitError:
+        pending.discard_stash(stash_id)
+        messages.error(
+            request, "The undo backup cannot be restored: the combined volume is out of range."
+        )
+        return redirect("sessions")
     except KeyError, TypeError, ValueError, InvalidOperation:
         pending.discard_stash(stash_id)
         messages.error(request, "The undo backup could not be read.")
