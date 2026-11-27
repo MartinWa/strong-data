@@ -290,29 +290,40 @@ def delete_sessions(request):
 @login_required
 @require_POST
 def delete_session(request, pk):
-    session = get_object_or_404(WorkoutSession, owner=request.user, pk=pk)
     stash_id = secrets.token_urlsafe(16)
     confirmed = request.POST.get("confirm") == "1"
-    with transaction.atomic():
-        payload = stash_session(request.user, session)
-        too_big = len(json.dumps(payload).encode("utf-8")) > pending.STASH_MAX_BYTES
-        if too_big and not confirmed:
-            params = request.GET.copy()
-            params["confirm_delete"] = str(session.pk)
-            params["open"] = str(session.pk)
-            return redirect(f"{reverse('sessions')}?{params.urlencode()}")
-        stashed = not too_big and pending.save_stash(stash_id, payload)
-        if not stashed and not confirmed:
-            messages.error(
-                request, "The undo backup could not be written, so the session was not deleted."
-            )
-            return redirect("sessions")
-        set_total = session.sets.count()
-        session.delete()
-    if stashed:
+    keep_stash = False
+    try:
+        with transaction.atomic():
+            session = get_object_or_404(WorkoutSession, owner=request.user, pk=pk)
+            payload = stash_session(request.user, session)
+            too_big = len(json.dumps(payload).encode("utf-8")) > pending.STASH_MAX_BYTES
+            if too_big and not confirmed:
+                params = request.GET.copy()
+                params["confirm_delete"] = str(session.pk)
+                params["open"] = str(session.pk)
+                return redirect(f"{reverse('sessions')}?{params.urlencode()}")
+            stashed = not too_big and pending.save_stash(stash_id, payload)
+            if not stashed and not confirmed:
+                messages.error(
+                    request, "The undo backup could not be written, so the session was not deleted."
+                )
+                return redirect("sessions")
+            set_total = len(payload["sets"])
+            session.delete()
+        keep_stash = stashed
+    except OperationalError as exc:
+        if "lock" not in str(exc).lower():
+            raise
+        messages.error(request, "The database was busy. Please try deleting the session again.")
+        return redirect("sessions")
+    finally:
+        if not keep_stash:
+            pending.discard_stash(stash_id)
+    if keep_stash:
         request.session[UNDO_STASH_KEY] = stash_id
     message = f"Deleted {session} ({set_total} set{'' if set_total == 1 else 's'})."
-    if not stashed:
+    if not keep_stash:
         message += " No undo backup was kept."
     messages.success(request, message)
     return redirect("sessions")
@@ -333,6 +344,11 @@ def undo_delete(request):
         return redirect("sessions")
     try:
         added = restore_stash(request.user, payload)
+    except OperationalError as exc:
+        if "lock" not in str(exc).lower():
+            raise
+        messages.error(request, "The database was busy. Please try restoring the session again.")
+        return redirect("sessions")
     except ImportLimitError:
         messages.error(
             request,

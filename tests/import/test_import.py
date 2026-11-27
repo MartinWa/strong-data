@@ -251,21 +251,65 @@ def test_renumbering_reserves_source_orders_of_later_rows():
 
 
 @pytest.mark.django_db
-def test_edit_matching_another_sets_values_is_still_a_conflict():
+def test_renumbered_set_cannot_claim_a_later_fragments_source_order():
     user = get_user_model().objects.create_user(username="alice", password="x")
+    first = "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8"
+    collision = "2026-01-05 08:30:00,Push Day,54m,Bench,1,85,5,0,0,8"
+    later = "2026-01-05 08:30:00,Push Day,54m,Bench,2,85,5,0,0,8"
+    import_workouts_csv(user, csv_text(first, collision))
+    original_ids = list(WorkoutSet.objects.filter(owner=user).values_list("id", flat=True))
+
+    fragment = csv_text(later)
+    comparison = services.compare_import(user, parse_workouts(fragment))
+    assert (comparison["new_sets"], comparison["conflicted"]) == (1, 0)
+    result = import_workouts_csv(user, fragment)
+    assert (result.added_sets, result.skipped_sets, result.conflicted) == (1, 0, 0)
+    sets = WorkoutSet.objects.filter(owner=user).order_by("set_order")
+    assert list(sets.values_list("set_order", "source_set_order")) == [(1, None), (2, 1), (3, 2)]
+    assert list(sets.values_list("id", flat=True))[:2] == original_ids
+
+    reimport = import_workouts_csv(user, csv_text(first, collision, later))
+    assert (reimport.added_sets, reimport.skipped_sets, reimport.conflicted) == (0, 3, 0)
+
+
+@pytest.mark.django_db
+def test_complete_export_adds_a_missing_set_even_when_it_shares_a_source_order():
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    first = "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8"
+    second = "2026-01-05 08:30:00,Push Day,54m,Bench,1,85,5,0,0,8"
+    import_workouts_csv(user, csv_text(first))
+
+    complete = csv_text(second, first)
+    comparison = services.compare_import(user, parse_workouts(complete))
+    result = import_workouts_csv(user, complete)
+
+    assert comparison["new_sets"] == 1
+    assert comparison["existing_sets"] == 1
+    assert comparison["conflicted"] == 0
+    assert (result.added_sets, result.skipped_sets, result.conflicted) == (1, 1, 0)
+    assert WorkoutSet.objects.filter(owner=user).count() == 2
+
+
+@pytest.mark.django_db
+@pytest.mark.parametrize("include_second_set", [False, True])
+def test_edit_matching_another_sets_values_is_still_a_conflict(include_second_set):
+    user = get_user_model().objects.create_user(username="alice", password="x")
+    second = "2026-01-05 08:30:00,Push Day,54m,Bench,2,85,5,0,0,8"
     original = csv_text(
         "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
-        "2026-01-05 08:30:00,Push Day,54m,Bench,2,85,5,0,0,8",
+        second,
     )
     import_workouts_csv(user, original)
-    edited = csv_text(
-        "2026-01-05 08:30:00,Push Day,54m,Bench,1,85,5,0,0,8",
-        "2026-01-05 08:30:00,Push Day,54m,Bench,2,85,5,0,0,8",
-    )
+    rows = ["2026-01-05 08:30:00,Push Day,54m,Bench,1,85,5,0,0,8"]
+    if include_second_set:
+        rows.append(second)
+    edited = csv_text(*rows)
 
+    comparison = services.compare_import(user, parse_workouts(edited))
+    assert (comparison["new_sets"], comparison["conflicted"]) == (0, 1)
     result = import_workouts_csv(user, edited)
 
-    assert (result.added_sets, result.skipped_sets, result.conflicted) == (0, 2, 1)
+    assert (result.added_sets, result.skipped_sets, result.conflicted) == (0, len(rows), 1)
 
 
 @pytest.mark.django_db

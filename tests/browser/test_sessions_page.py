@@ -5,9 +5,10 @@ from pathlib import Path
 import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
+from django.db import OperationalError, connection
 from django.urls import reverse
 
-from workouts import pending
+from workouts import pending, views
 from workouts.models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from workouts.services import import_workouts_csv
 
@@ -434,6 +435,35 @@ def test_delete_aborts_when_the_backup_cannot_be_written(client, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_delete_on_locked_database_keeps_session_and_discards_backup(client):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+
+    def lock_on_set_delete(execute, sql, params, many, context):
+        if sql.startswith('DELETE FROM "workouts_workoutset"'):
+            assert list(pending.undo_dir().glob("*.json"))
+            raise OperationalError("database is locked")
+        return execute(sql, params, many, context)
+
+    with connection.execute_wrapper(lock_on_set_delete):
+        response = client.post(reverse("delete_session", args=[session.pk]), follow=True)
+
+    assert response.status_code == 200
+    assert "Please try deleting the session again." in response.content.decode()
+    assert WorkoutSession.objects.filter(pk=session.pk).exists()
+    assert WorkoutSet.objects.filter(session=session).count() == 4
+    assert "undo_stash" not in client.session
+    assert list(pending.undo_dir().glob("*.json")) == []
+
+    response = client.post(reverse("delete_session", args=[session.pk]), follow=True)
+
+    assert response.status_code == 200
+    assert not WorkoutSession.objects.filter(pk=session.pk).exists()
+    assert pending.load_stash(client.session["undo_stash"]) is not None
+
+
+@pytest.mark.django_db
 def test_oversized_delete_confirmation_keeps_the_current_page_and_filters(client, monkeypatch):
     user = get_user_model().objects.create_user(username="alice", password="x")
     rows = "\n".join(
@@ -464,18 +494,22 @@ def test_oversized_delete_confirmation_keeps_the_current_page_and_filters(client
 
 
 @pytest.mark.django_db
-def test_undo_restores_identical_valued_sets_with_different_orders(client):
+@pytest.mark.parametrize(("backup_orders", "reimported_order"), [((1, 2), 1), ((1,), 2)])
+def test_undo_restores_identical_valued_sets_with_different_orders(
+    client, backup_orders, reimported_order
+):
     user = get_user_model().objects.create_user(username="alice", password="x")
-    text = HEADER + (
-        "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,80,5,0,0,8\n"
-        "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),2,80,5,0,0,8\n"
+    text = HEADER + "".join(
+        f"2026-01-05 09:00:00,Axlar,54m,Bench Press,{order},80,5,0,0,8\n" for order in backup_orders
     )
     import_workouts_csv(user, text)
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
     stash_id = client.session["undo_stash"]
-    fragment = HEADER + "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,80,5,0,0,8\n"
+    fragment = HEADER + (
+        f"2026-01-05 09:00:00,Axlar,54m,Bench Press,{reimported_order},80,5,0,0,8\n"
+    )
     import_workouts_csv(user, fragment)
 
     client.post(reverse("undo_delete"), {"stash_id": stash_id})
@@ -508,6 +542,8 @@ def test_undo_after_partial_reimport_does_not_duplicate_sets(client):
         Decimal("80.00"),
         Decimal("90.00"),
     ]
+    result = import_workouts_csv(user, duplicate)
+    assert (result.added_sets, result.skipped_sets, result.conflicted) == (0, 2, 0)
 
 
 @pytest.mark.django_db
@@ -528,6 +564,32 @@ def test_undo_volume_overflow_keeps_the_backup_for_retry(client):
     assert pending.load_stash(stash_id) is not None
     assert client.session.get("undo_stash") == stash_id
     assert WorkoutSet.objects.filter(owner=user).count() == 1
+
+
+@pytest.mark.django_db
+def test_undo_on_locked_database_keeps_backup_for_retry(client, monkeypatch):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    stash_id = client.session["undo_stash"]
+
+    def locked_restore(*args):
+        raise OperationalError("database is locked")
+
+    with monkeypatch.context() as patch:
+        patch.setattr(views, "restore_stash", locked_restore)
+        response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
+
+    assert response.status_code == 200
+    assert "Please try restoring the session again." in response.content.decode()
+    assert pending.load_stash(stash_id) is not None
+    assert client.session.get("undo_stash") == stash_id
+
+    client.post(reverse("undo_delete"), {"stash_id": stash_id})
+
+    assert WorkoutSet.objects.filter(owner=user).count() == 4
+    assert pending.load_stash(stash_id) is None
 
 
 @pytest.mark.django_db

@@ -28,15 +28,15 @@ def dedup_set_keys(apps, schema_editor):
             else:
                 kept[key].add(values)
                 session_max[session_id] += 1
-                renumber.append((pk, session_id, session_max[session_id]))
+                renumber.append((pk, session_id, session_max[session_id], set_order))
         else:
             kept[key] = {values}
     if stale:
         WorkoutSet.objects.filter(pk__in=[pk for pk, _ in stale]).delete()
-    for pk, _session_id, order in renumber:
-        WorkoutSet.objects.filter(pk=pk).update(set_order=order)
+    for pk, _session_id, order, source_order in renumber:
+        WorkoutSet.objects.filter(pk=pk).update(set_order=order, source_set_order=source_order)
     affected = {session_id for _pk, session_id in stale} | {
-        session_id for _pk, session_id, _order in renumber
+        session_id for _pk, session_id, _order, _source_order in renumber
     }
     if affected:
         rows = (
@@ -55,6 +55,11 @@ class Migration(migrations.Migration):
     dependencies = [("workouts", "0004_split_core_into_abs")]
 
     operations = [
+        migrations.AddField(
+            model_name="workoutset",
+            name="source_set_order",
+            field=models.IntegerField(null=True, editable=False),
+        ),
         migrations.RunPython(dedup_set_keys, migrations.RunPython.noop),
         migrations.AddConstraint(
             model_name="workoutset",

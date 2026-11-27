@@ -107,6 +107,7 @@ class WorkoutSet(models.Model):
         related_name="sets",
     )
     set_order = models.IntegerField()
+    source_set_order = models.IntegerField(null=True, editable=False)
     weight_kg = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     reps = models.IntegerField(default=0)
     rpe = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)

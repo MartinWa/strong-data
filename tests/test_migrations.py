@@ -123,7 +123,9 @@ def test_duplicate_set_keys_are_renumbered_or_dropped_and_totals_recomputed():
     first = WorkoutSet.objects.create(
         **shared, weight_kg=Decimal("80.00"), volume_kg=Decimal("400.00")
     )
-    WorkoutSet.objects.create(**shared, weight_kg=Decimal("82.00"), volume_kg=Decimal("410.00"))
+    renumbered = WorkoutSet.objects.create(
+        **shared, weight_kg=Decimal("82.00"), volume_kg=Decimal("410.00")
+    )
     WorkoutSet.objects.create(**shared, weight_kg=Decimal("82.00"), volume_kg=Decimal("410.00"))
     other = WorkoutSet.objects.create(
         **{**shared, "set_order": 2, "set_time": datetime(2026, 1, 5, 8, 35, tzinfo=UTC)},
@@ -138,12 +140,14 @@ def test_duplicate_set_keys_are_renumbered_or_dropped_and_totals_recomputed():
     WorkoutSession = apps.get_model("workouts", "WorkoutSession")
 
     rows = list(WorkoutSet.objects.filter(session_id=session.pk).order_by("id"))
-    assert [row.pk for row in rows] == [first.pk, rows[1].pk, other.pk]
+    assert [row.pk for row in rows] == [first.pk, renumbered.pk, other.pk]
     assert len(rows) == 3
     assert rows[0].set_order == 1
+    assert rows[0].source_set_order is None
     assert rows[0].weight_kg == Decimal("80.00")
     assert rows[1].weight_kg == Decimal("82.00")
     assert rows[1].set_order == 3
+    assert rows[1].source_set_order == 1
     session = WorkoutSession.objects.get(pk=session.pk)
     assert session.set_count == 3
     assert session.total_volume_kg == Decimal("1210.00")

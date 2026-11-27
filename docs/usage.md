@@ -44,6 +44,10 @@ and everything already stored is kept exactly as it is. Re-importing the same
 export changes nothing, and a partial or older export is safe — it adds what is
 missing and never removes anything that is not in the file.
 
+If distinct sets in a session share the same exercise, timestamp and CSV set
+order, the app gives them separate stored orders. It keeps their original CSV
+order for matching later imports and undo restores.
+
 What a re-import does with changes you made in Strong:
 
 | Change in Strong | After re-import |
@@ -105,8 +109,9 @@ katakana exercise name.
 
 Each session also has a *Delete this session* button inside it: no confirmation,
 the deleted session can be restored with *Undo delete* for a limited time (the
-backup is lost if the server restarts). *Delete all sessions* at the bottom of the
-page deletes every session and set for your account after a second confirmation.
+backup is lost if the server restarts). If the database is busy, try the delete
+or undo again. *Delete all sessions* at the bottom of the page deletes every
+session and set for your account after a second confirmation.
 Corrections and tokens are kept, so a later import reuses your corrections instead
 of re-guessing them.
 
