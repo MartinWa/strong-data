@@ -1,4 +1,4 @@
-from datetime import date, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from pathlib import Path
 
@@ -6,6 +6,7 @@ import pytest
 from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
 from django.db import OperationalError, connection
+from django.test import override_settings
 from django.urls import reverse
 
 from workouts import pending, views
@@ -31,6 +32,10 @@ def session_with_data(username="alice", csv_text=GROUPED_CSV):
     user = get_user_model().objects.create_user(username=username, password="x")
     import_workouts_csv(user, csv_text)
     return user
+
+
+def newest_undo_stash(client):
+    return next(reversed(client.session[views.UNDO_STASHES_KEY]))
 
 
 @pytest.mark.django_db
@@ -327,7 +332,7 @@ def test_delete_session_removes_only_that_session_and_keeps_the_rest(client):
         "Chest"
     }
     assert ApiToken.objects.filter(pk=token.pk).exists()
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
     payload = pending.load_stash(stash_id)
     assert payload["session"]["workout_name"] == "Axlar"
     assert len(payload["sets"]) == 4
@@ -356,7 +361,7 @@ def test_undo_restores_the_deleted_session_and_its_sets(client):
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
     assert not WorkoutSession.objects.filter(owner=user).exists()
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
 
     response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
 
@@ -365,7 +370,7 @@ def test_undo_restores_the_deleted_session_and_its_sets(client):
     assert restored.workout_name == "Axlar"
     assert restored.set_count == 4
     assert WorkoutSet.objects.filter(session=restored).count() == 4
-    assert "undo_stash" not in client.session
+    assert views.UNDO_STASHES_KEY not in client.session
     assert "Restored Axlar with 4 sets." in response.content.decode()
     assert "Undo delete" not in client.get(reverse("sessions")).content.decode()
 
@@ -378,15 +383,20 @@ def test_undo_restores_the_session_the_form_points_at(client):
     axlar = WorkoutSession.objects.get(owner=user, workout_name="Axlar")
     pull = WorkoutSession.objects.get(owner=user, workout_name="Pull Day")
     client.post(reverse("delete_session", args=[axlar.pk]))
-    stash_a = client.session["undo_stash"]
+    stash_a = newest_undo_stash(client)
     client.post(reverse("delete_session", args=[pull.pk]))
-    stash_b = client.session["undo_stash"]
+    stash_b = newest_undo_stash(client)
 
-    client.post(reverse("undo_delete"), {"stash_id": stash_a})
+    content = client.get(reverse("sessions")).content.decode()
+    assert 'aria-labelledby="undo-heading"' in content
+    assert content.index(f'value="{stash_b}"') < content.index(f'value="{stash_a}"')
+
+    response = client.post(reverse("undo_delete"), {"stash_id": stash_a}, follow=True)
 
     assert WorkoutSession.objects.filter(owner=user, workout_name="Axlar").exists()
     assert not WorkoutSession.objects.filter(owner=user, workout_name="Pull Day").exists()
     assert pending.load_stash(stash_b) is not None
+    assert f'value="{stash_b}"' in response.content.decode()
 
 
 @pytest.mark.django_db
@@ -453,14 +463,14 @@ def test_delete_on_locked_database_keeps_session_and_discards_backup(client):
     assert "Please try deleting the session again." in response.content.decode()
     assert WorkoutSession.objects.filter(pk=session.pk).exists()
     assert WorkoutSet.objects.filter(session=session).count() == 4
-    assert "undo_stash" not in client.session
+    assert views.UNDO_STASHES_KEY not in client.session
     assert list(pending.undo_dir().glob("*.json")) == []
 
     response = client.post(reverse("delete_session", args=[session.pk]), follow=True)
 
     assert response.status_code == 200
     assert not WorkoutSession.objects.filter(pk=session.pk).exists()
-    assert pending.load_stash(client.session["undo_stash"]) is not None
+    assert pending.load_stash(newest_undo_stash(client)) is not None
 
 
 @pytest.mark.django_db
@@ -506,7 +516,7 @@ def test_undo_restores_identical_valued_sets_with_different_orders(
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
     fragment = HEADER + (
         f"2026-01-05 09:00:00,Axlar,54m,Bench Press,{reimported_order},80,5,0,0,8\n"
     )
@@ -530,7 +540,7 @@ def test_undo_after_partial_reimport_does_not_duplicate_sets(client):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
     fragment = HEADER + "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,90,5,0,0,8\n"
     import_workouts_csv(user, fragment)
 
@@ -554,7 +564,7 @@ def test_undo_volume_overflow_keeps_the_backup_for_retry(client):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
     fragment = HEADER + "2026-01-05 08:30:00,Push Day,54m,Bench,1,900000,10000,0,0,8\n"
     import_workouts_csv(user, fragment)
 
@@ -562,8 +572,40 @@ def test_undo_volume_overflow_keeps_the_backup_for_retry(client):
 
     assert "cannot be restored yet" in response.content.decode()
     assert pending.load_stash(stash_id) is not None
-    assert client.session.get("undo_stash") == stash_id
+    assert stash_id in client.session[views.UNDO_STASHES_KEY]
     assert WorkoutSet.objects.filter(owner=user).count() == 1
+
+    replacement = WorkoutSession.objects.get(owner=user)
+    response = client.post(reverse("delete_session", args=[replacement.pk]), follow=True)
+    assert f'value="{stash_id}"' in response.content.decode()
+
+    response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
+    assert "Restored Push Day with 1 set." in response.content.decode()
+    assert WorkoutSet.objects.get(owner=user).weight_kg == Decimal("600000.00")
+
+
+@pytest.mark.django_db
+def test_undo_merges_into_a_session_reimported_in_a_new_zone(client):
+    with override_settings(TIME_ZONE="UTC"):
+        user = session_with_data()
+        client.force_login(user)
+        session = WorkoutSession.objects.get(owner=user)
+        client.post(reverse("delete_session", args=[session.pk]))
+        stash_id = newest_undo_stash(client)
+
+    fragment = "\n".join(GROUPED_CSV.splitlines()[:2]) + "\n"
+    with override_settings(TIME_ZONE="Europe/Stockholm"):
+        import_workouts_csv(user, fragment)
+        client.post(reverse("undo_delete"), {"stash_id": stash_id})
+        result = import_workouts_csv(user, GROUPED_CSV)
+
+    session = WorkoutSession.objects.get(owner=user)
+    assert session.import_time_zone == "Europe/Stockholm"
+    assert session.set_count == 4
+    assert session.sets.order_by("set_time").first().set_time == datetime(
+        2026, 1, 5, 8, 0, tzinfo=UTC
+    )
+    assert (result.added_sets, result.skipped_sets) == (0, 4)
 
 
 @pytest.mark.django_db
@@ -572,7 +614,7 @@ def test_undo_on_locked_database_keeps_backup_for_retry(client, monkeypatch):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
 
     def locked_restore(*args):
         raise OperationalError("database is locked")
@@ -584,7 +626,7 @@ def test_undo_on_locked_database_keeps_backup_for_retry(client, monkeypatch):
     assert response.status_code == 200
     assert "Please try restoring the session again." in response.content.decode()
     assert pending.load_stash(stash_id) is not None
-    assert client.session.get("undo_stash") == stash_id
+    assert stash_id in client.session[views.UNDO_STASHES_KEY]
 
     client.post(reverse("undo_delete"), {"stash_id": stash_id})
 
@@ -598,7 +640,7 @@ def test_undo_after_a_reimport_does_not_duplicate_rows(client):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
     import_workouts_csv(user, GROUPED_CSV)
 
     client.post(reverse("undo_delete"), {"stash_id": stash_id})
@@ -625,7 +667,7 @@ def test_undo_with_a_missing_stash_reports_expiry(client):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
     pending.discard_stash(stash_id)
 
     response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)
@@ -633,7 +675,7 @@ def test_undo_with_a_missing_stash_reports_expiry(client):
     assert response.status_code == 200
     assert "The undo backup expired or was not found." in response.content.decode()
     assert not WorkoutSession.objects.filter(owner=user).exists()
-    assert "undo_stash" not in client.session
+    assert views.UNDO_STASHES_KEY not in client.session
     assert "Undo delete" not in client.get(reverse("sessions")).content.decode()
 
 
@@ -643,7 +685,7 @@ def test_undo_with_a_corrupt_stash_reports_it_unreadable(client):
     client.force_login(user)
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
-    stash_id = client.session["undo_stash"]
+    stash_id = newest_undo_stash(client)
     pending.save_stash(stash_id, {"owner_id": user.id, "session": {}})
 
     response = client.post(reverse("undo_delete"), {"stash_id": stash_id}, follow=True)

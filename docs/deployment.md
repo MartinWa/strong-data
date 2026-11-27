@@ -51,12 +51,12 @@ refuses to start when `STRONG_SECRET_KEY` is missing or still the placeholder fr
 | `STRONG_ALLOWED_HOSTS` | `localhost,127.0.0.1` | Comma-separated public hostnames the proxy forwards, e.g. `workouts.example.com`. Requests with any other `Host` are rejected. |
 | `STRONG_TRUSTED_PROXY` | none, required | Address allowed to set forwarding headers. Use `*` when the container is reachable only from a trusted Docker network or a loopback port, or the proxy's container address to narrow it. Without it `X-Forwarded-Proto` is ignored and HTTPS form submissions fail the CSRF origin check. With a specific address (not `*`, not empty) the app also honors the proxy's `X-Forwarded-Proto` itself (`SECURE_PROXY_SSL_HEADER`); with `*` it does not, and the server prints a warning at startup when `STRONG_HOST_PORT` also publishes the port on the host, because then any client that can reach the port can spoof forwarding headers. |
 | `STRONG_IMAGE` | `ghcr.io/martinwa/strong-data:latest` | Image tag or digest to deploy. |
-| `STRONG_TIME_ZONE` | `UTC` | IANA zone name, e.g. `Europe/Stockholm`. Strong exports record wall-clock local time with no offset, so imports are interpreted in this zone and every date in the UI and API is rendered in it. It applies at import time: changing it later does not rewrite existing rows. |
+| `STRONG_TIME_ZONE` | `UTC` | IANA zone name, e.g. `Europe/Stockholm`. New sessions use this zone to interpret Strong's wall-clock timestamps. Existing sessions keep their import zone for later merges. The current zone controls local time rendering. |
 | `PUID` / `PGID` | `1000` / `1000` | UID and GID the process runs as and that must own the `data` directory. |
 | `STRONG_DEBUG` | `false` | Never enable on a public instance, and not passed by the production Compose file at all. With `false` the session and CSRF cookies are `Secure`, so the app must be served over HTTPS. |
 | `STRONG_CSRF_TRUSTED_ORIGINS` | empty | Comma-separated `https://` origins, only needed if the proxy rewrites the `Host` header. |
 | `STRONG_UPDATE_CHECK` | `true` | Lets the footer ask GitHub for the latest stable release and show a dot when a newer one exists. Cached for six hours; never blocks page rendering. Set `false` for an installation that must make no outbound requests. |
-| `STRONG_PENDING_SWEEP_SECONDS` | `900` | How often the server deletes staged uploads whose preview expired. `0` turns the background sweep off, for an installation that prefers an external `manage.py purge_pending` schedule. |
+| `STRONG_PENDING_SWEEP_SECONDS` | `900` | How often the server deletes expired staged uploads and undo backups. `0` turns the background sweep off, for an installation that prefers an external `manage.py purge_pending` schedule. |
 | `STRONG_PORT` | `8000` | Listen port inside the container. Leave it alone: `compose.host-port.yaml` publishes container port 8000, and the production Compose file passes no value for it. |
 | `STRONG_DB_PATH` | `/app/data/strong.sqlite3` | Set by the image. Override only when you mount the database somewhere else. |
 | `STRONG_STATIC_ROOT` | `/app/staticfiles` | Where collected static files live. The image ships them and is read-only, so override only together with a writable volume. |
@@ -265,6 +265,10 @@ server process every `STRONG_PENDING_SWEEP_SECONDS` (default 900, starting at
 boot), and also runs at the start of any request that reaches the upload, preview
 or sessions page.
 
+Undo backups expire after 24 hours and are rejected at restore time once expired.
+The same sweep removes their files. To change the lifetime, pass
+`STRONG_UNDO_TTL_SECONDS` through the Compose override.
+
 Set `STRONG_PENDING_SWEEP_SECONDS=0` to disable the thread and sweep yourself:
 
 ```sh
@@ -289,6 +293,10 @@ services:
 ```
 
 ## Verify and upgrade
+
+When upgrading to merge imports, keep `STRONG_TIME_ZONE` set to the zone used for
+your last import until the migration finishes. The migration records that setting
+as the import zone for existing sessions.
 
 Take a backup before upgrading (see [backup-and-recovery.md](backup-and-recovery.md)),
 update `STRONG_IMAGE` to the new released tag, then:

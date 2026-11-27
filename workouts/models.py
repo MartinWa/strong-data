@@ -55,6 +55,9 @@ class WorkoutSession(models.Model):
     program = models.CharField(max_length=255)
     workout_name = models.CharField(max_length=255)
     start_time = models.DateTimeField()
+    import_time_zone = models.CharField(
+        max_length=64, default=timezone.get_default_timezone_name, editable=False
+    )
     duration_min = models.IntegerField(null=True, blank=True)
     set_count = models.IntegerField(default=0)
     total_volume_kg = models.DecimalField(max_digits=12, decimal_places=2, default=0)

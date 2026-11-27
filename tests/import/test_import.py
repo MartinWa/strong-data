@@ -84,6 +84,32 @@ def test_utc_remains_the_default_for_imports():
 
 
 @pytest.mark.django_db
+def test_reimport_after_timezone_change_uses_the_stored_sessions_zone():
+    user = get_user_model().objects.create_user(username="tz", password="x")
+    original = csv_text("2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8")
+    with override_settings(TIME_ZONE="UTC"):
+        import_workouts_csv(user, original)
+    original_id = WorkoutSet.objects.get(owner=user).id
+
+    export = original + (
+        "2026-01-05 08:35:00,Push Day,54m,Bench,2,80,5,0,0,8\n"
+        "2026-02-01 07:00:00,Pull Day,1h,Row,1,60,10,0,0,9\n"
+    )
+    with override_settings(TIME_ZONE="Europe/Stockholm"):
+        comparison = services.compare_import(user, parse_workouts(export))
+        result = import_workouts_csv(user, export)
+
+    assert (comparison["new_sets"], comparison["existing_sets"]) == (2, 1)
+    assert (result.added_sets, result.skipped_sets, result.conflicted) == (2, 1, 0)
+    push = WorkoutSession.objects.get(owner=user, workout_name="Push Day")
+    pull = WorkoutSession.objects.get(owner=user, workout_name="Pull Day")
+    assert (push.import_time_zone, pull.import_time_zone) == ("UTC", "Europe/Stockholm")
+    assert push.sets.get(set_order=1).id == original_id
+    assert push.sets.get(set_order=2).set_time == datetime(2026, 1, 5, 8, 35, tzinfo=UTC)
+    assert pull.sets.get().set_time == datetime(2026, 2, 1, 6, 0, tzinfo=UTC)
+
+
+@pytest.mark.django_db
 def test_reimport_is_a_no_op_and_preserves_meta_corrections():
     user = get_user_model().objects.create_user(username="bob", password="x")
 

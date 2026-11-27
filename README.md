@@ -26,6 +26,7 @@ records, muscle-group corrections and a token-authenticated API.
   year-over-year comparison, all server-rendered and printable
 - Merging import: confirming an export adds what is not stored yet and never
   deletes; re-importing the same export changes nothing
+- Individual session deletion with time-limited undo on the Sessions page
 - Read-only, versioned, owner-scoped API with a generated OpenAPI reference
 
 ## What it looks like

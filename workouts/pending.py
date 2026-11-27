@@ -114,8 +114,24 @@ def save_stash(stash_id: str, payload: dict) -> bool:
     return True
 
 
-def load_stash(stash_id: str) -> dict | None:
+def _live_stash_path(stash_id: str) -> Path | None:
     path = _stash_path(stash_id)
+    if path is None:
+        return None
+    try:
+        if path.stat().st_mtime >= time.time() - UNDO_TTL_SECONDS:
+            return path
+    except OSError:
+        return None
+    return None
+
+
+def stash_available(stash_id: str) -> bool:
+    return _live_stash_path(stash_id) is not None
+
+
+def load_stash(stash_id: str) -> dict | None:
+    path = _live_stash_path(stash_id)
     if path is None:
         return None
     try:

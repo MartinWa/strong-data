@@ -16,13 +16,20 @@
   {% endif %}
 </div>
 
-{% if request.session.undo_stash %}
+{% if undo_stashes %}
 <div class="card undo-banner">
-  <form method="post" action="{% url 'undo_delete' %}">
+  <h2 id="undo-heading">Recently deleted sessions</h2>
+  <p class="muted small">Most recent first. Undo is available for a limited time and is lost if the server restarts.</p>
+  <form method="post" action="{% url 'undo_delete' %}" aria-labelledby="undo-heading">
     {% csrf_token %}
-    <input type="hidden" name="stash_id" value="{{ request.session.undo_stash }}">
-    <p>A session was deleted. <button class="btn btn-sm" type="submit">Undo delete</button></p>
-    <p class="muted small">Undo is available for a limited time and is lost if the server restarts.</p>
+    <ul>
+      {% for stash in undo_stashes %}
+      <li>
+        <button class="btn btn-sm" type="submit" name="stash_id" value="{{ stash.id }}" aria-describedby="undo-time-{{ forloop.counter }}">Undo delete of {{ stash.session }}</button>
+        <span class="muted small" id="undo-time-{{ forloop.counter }}">Deleted {{ stash.deleted_at|date:"Y-m-d H:i:s" }}</span>
+      </li>
+      {% endfor %}
+    </ul>
   </form>
 </div>
 {% endif %}

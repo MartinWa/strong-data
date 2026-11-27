@@ -48,6 +48,10 @@ If distinct sets in a session share the same exercise, timestamp and CSV set
 order, the app gives them separate stored orders. It keeps their original CSV
 order for matching later imports and undo restores.
 
+Each session keeps the time zone it was imported in. Later exports use that zone
+to match sets in the session, including after a server time zone change. New
+sessions use the server's current setting.
+
 What a re-import does with changes you made in Strong:
 
 | Change in Strong | After re-import |
@@ -107,11 +111,13 @@ sessions (a matched session still shows all of its sets) and survive paging;
 names, so a search does not fold scripts and a hiragana query does not find a
 katakana exercise name.
 
-Each session also has a *Delete this session* button inside it: no confirmation,
-the deleted session can be restored with *Undo delete* for a limited time (the
-backup is lost if the server restarts). If the database is busy, try the delete
-or undo again. *Delete all sessions* at the bottom of the page deletes every
-session and set for your account after a second confirmation.
+Each session has a *Delete this session* button. The *Recently deleted sessions*
+list shows an *Undo delete* button for each available backup, newest first. Backups
+expire after 24 hours by default or when the container restarts. If a session has
+been re-imported, undo merges the backup using that session's import time zone.
+If the database is busy, try the delete or undo again. *Delete all sessions* at
+the bottom of the page deletes every session and set for your account after a
+second confirmation.
 Corrections and tokens are kept, so a later import reuses your corrections instead
 of re-guessing them.
 

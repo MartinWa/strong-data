@@ -3,7 +3,7 @@ import hmac
 import json
 import secrets
 import time
-from datetime import date
+from datetime import date, datetime
 from decimal import InvalidOperation
 from urllib.parse import urlencode
 
@@ -51,7 +51,7 @@ ExerciseMetaFormSet = modelformset_factory(
     absolute_max=MUSCLES_PAGE_SIZE,
 )
 PENDING_IMPORT_KEY = "pending_import"
-UNDO_STASH_KEY = "undo_stash"
+UNDO_STASHES_KEY = "undo_stashes"
 SESSIONS_PAGE_SIZE = 25
 TOO_LARGE_MESSAGE = "CSV export must be 10 MB or smaller. Choose a smaller file."
 PREVIEW_MISSING_MESSAGE = "Your preview expired or was not found. Upload the CSV again."
@@ -66,6 +66,24 @@ def _expired(request, import_id):
     _discard_pending(request, import_id)
     messages.error(request, "This preview expired. Upload the CSV again.")
     return redirect("upload")
+
+
+def _available_undo_stashes(request):
+    return {
+        stash_id: info
+        for stash_id, info in request.session.get(UNDO_STASHES_KEY, {}).items()
+        if pending.stash_available(stash_id)
+    }
+
+
+def _forget_undo_stash(request, stash_id):
+    stashes = request.session.get(UNDO_STASHES_KEY, {})
+    if stash_id in stashes:
+        stashes.pop(stash_id)
+        if stashes:
+            request.session[UNDO_STASHES_KEY] = stashes
+        else:
+            request.session.pop(UNDO_STASHES_KEY, None)
 
 
 def _optional_date(value):
@@ -217,6 +235,14 @@ def preview(request):
 @login_required
 def sessions(request):
     pending.purge_stale()
+    undo_stashes = [
+        {
+            "id": stash_id,
+            "session": info["session"],
+            "deleted_at": datetime.fromisoformat(info["at"]),
+        }
+        for stash_id, info in reversed(_available_undo_stashes(request).items())
+    ]
     owned = WorkoutSession.objects.filter(owner=request.user)
     has_data = owned.exists()
     program = request.GET.get("program", "").strip()
@@ -252,6 +278,7 @@ def sessions(request):
             "query": query,
             "date_from": date_from.isoformat() if date_from else "",
             "date_to": date_to.isoformat() if date_to else "",
+            "undo_stashes": undo_stashes,
         },
     )
 
@@ -321,7 +348,9 @@ def delete_session(request, pk):
         if not keep_stash:
             pending.discard_stash(stash_id)
     if keep_stash:
-        request.session[UNDO_STASH_KEY] = stash_id
+        stashes = _available_undo_stashes(request)
+        stashes[stash_id] = {"session": str(session), "at": timezone.now().isoformat()}
+        request.session[UNDO_STASHES_KEY] = stashes
     message = f"Deleted {session} ({set_total} set{'' if set_total == 1 else 's'})."
     if not keep_stash:
         message += " No undo backup was kept."
@@ -338,8 +367,7 @@ def undo_delete(request):
         return redirect("sessions")
     payload = pending.load_stash(stash_id)
     if payload is None or payload.get("owner_id") != request.user.id:
-        if request.session.get(UNDO_STASH_KEY) == stash_id:
-            request.session.pop(UNDO_STASH_KEY, None)
+        _forget_undo_stash(request, stash_id)
         messages.error(request, "The undo backup expired or was not found.")
         return redirect("sessions")
     try:
@@ -358,13 +386,11 @@ def undo_delete(request):
         return redirect("sessions")
     except KeyError, TypeError, ValueError, InvalidOperation:
         pending.discard_stash(stash_id)
-        if request.session.get(UNDO_STASH_KEY) == stash_id:
-            request.session.pop(UNDO_STASH_KEY, None)
+        _forget_undo_stash(request, stash_id)
         messages.error(request, "The undo backup could not be read.")
         return redirect("sessions")
     pending.discard_stash(stash_id)
-    if request.session.get(UNDO_STASH_KEY) == stash_id:
-        request.session.pop(UNDO_STASH_KEY, None)
+    _forget_undo_stash(request, stash_id)
     messages.success(
         request,
         f"Restored {payload['session']['workout_name']} "

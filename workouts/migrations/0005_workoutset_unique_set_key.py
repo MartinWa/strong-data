@@ -1,51 +1,55 @@
 from decimal import Decimal
+from itertools import batched
 
 from django.db import migrations, models
 from django.db.models import Count, Max, Sum
 
-VALUE_FIELDS = ("weight_kg", "reps", "rpe", "distance", "seconds")
+BATCH_SIZE = 500
+VALUE_FIELDS = ("weight_kg", "reps", "rpe", "distance", "seconds", "volume_kg", "est_1rm_kg")
 
 
 def dedup_set_keys(apps, schema_editor):
     WorkoutSet = apps.get_model("workouts", "WorkoutSet")
     WorkoutSession = apps.get_model("workouts", "WorkoutSession")
+    sets = WorkoutSet.objects.using(schema_editor.connection.alias)
+    sessions = WorkoutSession.objects.using(schema_editor.connection.alias)
     session_max = {
         row["session_id"]: row["max_order"]
-        for row in WorkoutSet.objects.values("session_id").annotate(max_order=Max("set_order"))
+        for row in sets.values("session_id").annotate(max_order=Max("set_order"))
     }
     kept = {}
     stale = []
     renumber = []
-    for row in WorkoutSet.objects.order_by("id").values_list(
+    affected = set()
+    rows = sets.order_by("id").values_list(
         "id", "session_id", "exercise_id", "set_order", "set_time", *VALUE_FIELDS
-    ):
+    )
+    for row in rows.iterator(chunk_size=BATCH_SIZE):
         pk, session_id, exercise_id, set_order, set_time = row[:5]
         values = row[5:]
         key = (session_id, exercise_id, set_order, set_time)
         if key in kept:
+            affected.add(session_id)
             if values in kept[key]:
-                stale.append((pk, session_id))
+                stale.append(pk)
             else:
                 kept[key].add(values)
                 session_max[session_id] += 1
-                renumber.append((pk, session_id, session_max[session_id], set_order))
+                renumber.append((pk, session_max[session_id], set_order))
         else:
             kept[key] = {values}
-    if stale:
-        WorkoutSet.objects.filter(pk__in=[pk for pk, _ in stale]).delete()
-    for pk, _session_id, order, source_order in renumber:
-        WorkoutSet.objects.filter(pk=pk).update(set_order=order, source_set_order=source_order)
-    affected = {session_id for _pk, session_id in stale} | {
-        session_id for _pk, session_id, _order, _source_order in renumber
-    }
-    if affected:
+    for batch in batched(stale, BATCH_SIZE, strict=False):
+        sets.filter(pk__in=batch).delete()
+    for pk, order, source_order in renumber:
+        sets.filter(pk=pk).update(set_order=order, source_set_order=source_order)
+    for batch in batched(affected, BATCH_SIZE, strict=False):
         rows = (
-            WorkoutSet.objects.filter(session_id__in=affected)
+            sets.filter(session_id__in=batch)
             .values("session_id")
             .annotate(count=Count("id"), volume=Sum("volume_kg"))
         )
         for row in rows:
-            WorkoutSession.objects.filter(id=row["session_id"]).update(
+            sessions.filter(id=row["session_id"]).update(
                 set_count=row["count"],
                 total_volume_kg=row["volume"] or Decimal(0),
             )

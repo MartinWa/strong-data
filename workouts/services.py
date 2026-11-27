@@ -3,6 +3,7 @@ from dataclasses import dataclass
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from itertools import count
+from zoneinfo import ZoneInfo
 
 from django.db import IntegrityError, transaction
 from django.db.models import Count, Max, Min, Q, Sum
@@ -90,13 +91,21 @@ def _stored_sessions(user, pairs):
         rows = (
             WorkoutSession.objects.filter(owner=user)
             .filter(query)
-            .values_list("id", "session_date", "workout_name", "start_time", "duration_min")
+            .values_list(
+                "id",
+                "session_date",
+                "workout_name",
+                "start_time",
+                "duration_min",
+                "import_time_zone",
+            )
         )
-        for pk, session_date, workout_name, start_time, duration_min in rows:
+        for pk, session_date, workout_name, start_time, duration_min, import_time_zone in rows:
             stored[(session_date, workout_name)] = {
                 "id": pk,
                 "start_time": start_time,
                 "duration_min": duration_min,
+                "import_time_zone": import_time_zone,
             }
     return stored
 
@@ -124,10 +133,12 @@ def _allocate_set_order(preferred_order, taken, fallback_orders):
     return order
 
 
-def _classify(file_sessions, session_ids, exercise_ids, stored_sets, zone):
+def _classify(file_sessions, stored_sessions, exercise_ids, stored_sets, default_zone):
     file_groups = defaultdict(lambda: defaultdict(list))
     for _session, sets, key in file_sessions:
-        session_key = session_ids[key] or key
+        stored = stored_sessions.get(key)
+        session_key = stored["id"] if stored else key
+        zone = ZoneInfo(stored["import_time_zone"]) if stored else default_zone
         for item in sets:
             exercise_key = exercise_ids.get(item.exercise_name, item.exercise_name)
             set_time = _file_set_time(item, zone)
@@ -202,6 +213,7 @@ def _merge_once(user, parsed: ParsedWorkouts) -> ImportResult:
                 program=session.program,
                 workout_name=session.workout_name,
                 start_time=timezone.make_aware(session.start_time, zone),
+                import_time_zone=zone.key,
                 duration_min=session.duration_min,
                 set_count=len(sets),
                 total_volume_kg=sum((item.volume_kg for item in sets), Decimal(0)),
@@ -213,8 +225,8 @@ def _merge_once(user, parsed: ParsedWorkouts) -> ImportResult:
 
         session_ids = {key: _session_id(ref) for key, ref in session_refs.items()}
         exercise_ids = {name: exercise.id for name, exercise in exercises.items()}
-        stored_sets = _stored_sets(session_ids.values())
-        decisions = _classify(file_sessions, session_ids, exercise_ids, stored_sets, zone)
+        stored_sets = _stored_sets(ref["id"] for ref in stored.values())
+        decisions = _classify(file_sessions, stored, exercise_ids, stored_sets, zone)
 
         added_sets = 0
         skipped_sets = 0
@@ -311,9 +323,6 @@ def compare_import(user, parsed: ParsedWorkouts) -> dict:
     ]
     pairs = sorted({key for _session, _sets, key in file_sessions})
     stored_sessions = _stored_sessions(user, pairs)
-    session_ids = {
-        key: (stored_sessions[key]["id"] if key in stored_sessions else None) for key in pairs
-    }
     exercise_ids = {}
     for chunk in _chunked(parsed.exercises):
         exercise_ids.update(
@@ -321,10 +330,10 @@ def compare_import(user, parsed: ParsedWorkouts) -> dict:
         )
     stored_sets = _stored_sets(ref["id"] for ref in stored_sessions.values())
 
-    decisions = _classify(file_sessions, session_ids, exercise_ids, stored_sets, zone)
+    decisions = _classify(file_sessions, stored_sessions, exercise_ids, stored_sets, zone)
 
-    new_sessions = sum(1 for session_id in session_ids.values() if session_id is None)
-    existing_sessions = len(session_ids) - new_sessions
+    existing_sessions = len(stored_sessions)
+    new_sessions = len(pairs) - existing_sessions
     new_sets = 0
     existing_sets = 0
     conflicted = 0
@@ -386,6 +395,7 @@ def stash_session(user, session: WorkoutSession) -> dict:
             "program": session.program,
             "workout_name": session.workout_name,
             "start_time": session.start_time.isoformat(),
+            "import_time_zone": session.import_time_zone,
             "duration_min": session.duration_min,
         },
         "sets": [
@@ -419,21 +429,23 @@ def _parse_aware(value: str, zone):
 
 
 def restore_stash(user, payload: dict) -> int:
-    zone = timezone.get_default_timezone()
+    data = payload["session"]
+    stash_zone = ZoneInfo(data.get("import_time_zone") or timezone.get_default_timezone_name())
     with transaction.atomic():
-        data = payload["session"]
         session, _created = WorkoutSession.objects.get_or_create(
             owner=user,
             session_date=date.fromisoformat(data["session_date"]),
             workout_name=data["workout_name"],
             defaults={
                 "program": data.get("program") or "",
-                "start_time": _parse_aware(data["start_time"], zone),
+                "start_time": _parse_aware(data["start_time"], stash_zone),
+                "import_time_zone": stash_zone.key,
                 "duration_min": data.get("duration_min"),
                 "set_count": 0,
                 "total_volume_kg": Decimal(0),
             },
         )
+        session_zone = ZoneInfo(session.import_time_zone)
         stored_sets = _stored_sets([session.id])
         exercise_ids = {}
         items_by_time = defaultdict(list)
@@ -442,8 +454,10 @@ def restore_stash(user, payload: dict) -> int:
             if name not in exercise_ids:
                 exercise, _ = Exercise.objects.get_or_create(owner=user, name=name)
                 exercise_ids[name] = exercise.id
-            set_time = _utc(_parse_aware(item["set_time"], zone))
-            items_by_time[(session.id, exercise_ids[name], set_time)].append(item)
+            set_time = _parse_aware(item["set_time"], stash_zone)
+            if session_zone != stash_zone:
+                set_time = set_time.astimezone(stash_zone).replace(tzinfo=session_zone, fold=0)
+            items_by_time[(session.id, exercise_ids[name], _utc(set_time))].append(item)
 
         rows = []
         for group_key, items in items_by_time.items():

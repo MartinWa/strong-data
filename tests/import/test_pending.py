@@ -391,11 +391,16 @@ def test_purge_stale_expires_undo_stashes_with_their_own_ttl(pending_root):
     pending.save_stash(IMPORT_ID, {"sets": []})
     pending.save_stash(OTHER_ID, {"sets": []})
     expired = time.time() - pending.UNDO_TTL_SECONDS - 60
-    os.utime(pending.undo_dir() / f"{IMPORT_ID}.json", (expired, expired))
+    stale_path = pending.undo_dir() / f"{IMPORT_ID}.json"
+    os.utime(stale_path, (expired, expired))
+
+    assert not pending.stash_available(IMPORT_ID)
+    assert pending.load_stash(IMPORT_ID) is None
+    assert stale_path.exists()
 
     assert pending.purge_stale() == 1
 
-    assert pending.load_stash(IMPORT_ID) is None
+    assert not stale_path.exists()
     assert pending.load_stash(OTHER_ID) == {"sets": []}
 
 
