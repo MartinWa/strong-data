@@ -1,10 +1,15 @@
+from datetime import UTC, date, datetime
+from decimal import Decimal
+
 import pytest
-from django.db import connection
+from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
 
 MERGE_BEFORE = [("workouts", "0002_alter_apitoken_prefix")]
 MERGE_AFTER = [("workouts", "0003_merge_duplicate_muscle_groups")]
 SPLIT_AFTER = [("workouts", "0004_split_core_into_abs")]
+DEDUP_BEFORE = [("workouts", "0004_split_core_into_abs")]
+DEDUP_AFTER = [("workouts", "0005_workoutset_unique_set_key")]
 
 
 @pytest.mark.django_db(transaction=True)
@@ -85,3 +90,52 @@ def test_core_splits_into_abs_for_flexion_exercises():
         "Side Bend (Dumbbell)": "Core",
         "Chest Fly": "Chest",
     }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_duplicate_set_keys_are_deduped_and_the_constraint_is_enforced():
+    executor = MigrationExecutor(connection)
+    executor.migrate(DEDUP_BEFORE)
+    apps = executor.loader.project_state(DEDUP_BEFORE).apps
+    User = apps.get_model("auth", "User")
+    WorkoutSession = apps.get_model("workouts", "WorkoutSession")
+    Exercise = apps.get_model("workouts", "Exercise")
+    WorkoutSet = apps.get_model("workouts", "WorkoutSet")
+    user = User.objects.create(username="alice")
+    session = WorkoutSession.objects.create(
+        owner_id=user.pk,
+        session_date=date(2026, 1, 5),
+        program="Push Day",
+        workout_name="Push Day #1",
+        start_time=datetime(2026, 1, 5, 8, 0, tzinfo=UTC),
+    )
+    exercise = Exercise.objects.create(owner_id=user.pk, name="Bench Press (Barbell)")
+    shared = {
+        "owner_id": user.pk,
+        "session_id": session.pk,
+        "exercise_id": exercise.pk,
+        "set_order": 1,
+        "set_time": datetime(2026, 1, 5, 8, 30, tzinfo=UTC),
+        "reps": 5,
+        "volume_kg": Decimal("400.00"),
+    }
+    first = WorkoutSet.objects.create(**shared, weight_kg=Decimal("80.00"))
+    WorkoutSet.objects.create(**shared, weight_kg=Decimal("82.00"))
+    other = WorkoutSet.objects.create(
+        **{**shared, "set_order": 2, "set_time": datetime(2026, 1, 5, 8, 35, tzinfo=UTC)}
+    )
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(DEDUP_AFTER)
+    apps = executor.loader.project_state(DEDUP_AFTER).apps
+    WorkoutSet = apps.get_model("workouts", "WorkoutSet")
+
+    rows = list(WorkoutSet.objects.filter(session_id=session.pk).order_by("id"))
+    assert [row.pk for row in rows] == [first.pk, other.pk]
+    assert rows[0].weight_kg == Decimal("80.00")
+    assert any(
+        constraint.name == "uniq_set_session_exercise_order_time"
+        for constraint in WorkoutSet._meta.constraints
+    )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        WorkoutSet.objects.create(**shared, weight_kg=Decimal("90.00"))

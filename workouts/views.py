@@ -3,6 +3,7 @@ import hmac
 import secrets
 import time
 from datetime import date
+from decimal import InvalidOperation
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -12,7 +13,7 @@ from django.db import IntegrityError, OperationalError, transaction
 from django.db.models import Count, Q
 from django.forms import modelformset_factory
 from django.http import Http404
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -31,7 +32,13 @@ from .forms import (
 from .limits import MAX_UPLOAD_BYTES, MULTIPART_OVERHEAD_BYTES
 from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from .reports import build_exercise_report, build_report
-from .services import EmptyImportError, import_workouts_csv
+from .services import (
+    EmptyImportError,
+    compare_import,
+    import_workouts_csv,
+    restore_stash,
+    stash_session,
+)
 
 MUSCLES_PAGE_SIZE = 100
 ExerciseMetaFormSet = modelformset_factory(
@@ -42,6 +49,7 @@ ExerciseMetaFormSet = modelformset_factory(
     absolute_max=MUSCLES_PAGE_SIZE,
 )
 PENDING_IMPORT_KEY = "pending_import"
+UNDO_STASH_KEY = "undo_stash"
 SESSIONS_PAGE_SIZE = 25
 TOO_LARGE_MESSAGE = "CSV export must be 10 MB or smaller. Choose a smaller file."
 PREVIEW_MISSING_MESSAGE = "Your preview expired or was not found. Upload the CSV again."
@@ -166,12 +174,30 @@ def preview(request):
                 raise
             messages.error(request, "The database was busy, please try again")
             return redirect("preview")
+        except IntegrityError:
+            messages.error(
+                request, "Another import landed at the same time. Confirm again to merge."
+            )
+            return redirect("preview")
         _discard_pending(request, import_id)
-        messages.success(
-            request,
-            f"Imported {result.sessions} sessions and {result.sets} sets.",
+        message = (
+            f"Imported {result.added_sessions} session{'' if result.added_sessions == 1 else 's'} "
+            f"and {result.added_sets} set{'' if result.added_sets == 1 else 's'}."
         )
+        notes = []
+        if result.skipped_sets:
+            notes.append(f"{result.skipped_sets} skipped as already stored")
+        if result.conflicted:
+            plural = "" if result.conflicted == 1 else "s"
+            notes.append(f"{result.conflicted} conflict{plural} kept as stored")
+        if notes:
+            message += f" ({'; '.join(notes)})"
+        messages.success(request, message)
         return redirect("sessions")
+    raw = pending.load_csv(import_id)
+    if raw is None:
+        return _expired(request, import_id)
+    comparison = compare_import(request.user, parse_workouts(raw))
     return render(
         request,
         "workouts/preview.html",
@@ -181,6 +207,7 @@ def preview(request):
             "fingerprint": stored["fingerprint"],
             "current_sessions": WorkoutSession.objects.filter(owner=request.user).count(),
             "current_sets": WorkoutSet.objects.filter(owner=request.user).count(),
+            "comparison": comparison,
         },
     )
 
@@ -254,6 +281,50 @@ def delete_sessions(request):
         request,
         f"Deleted {session_total} session{'' if session_total == 1 else 's'} "
         f"and {set_total} set{'' if set_total == 1 else 's'}.",
+    )
+    return redirect("sessions")
+
+
+@login_required
+@require_POST
+def delete_session(request, pk):
+    session = get_object_or_404(WorkoutSession, owner=request.user, pk=pk)
+    stash_id = secrets.token_urlsafe(16)
+    stashed = pending.save_stash(stash_id, stash_session(request.user, session))
+    if stashed:
+        request.session[UNDO_STASH_KEY] = stash_id
+    set_total = session.sets.count()
+    with transaction.atomic():
+        session.delete()
+    message = f"Deleted {session} ({set_total} set{'' if set_total == 1 else 's'})."
+    if not stashed:
+        message += " No undo is available for this delete."
+    messages.success(request, message)
+    return redirect("sessions")
+
+
+@login_required
+@require_POST
+def undo_delete(request):
+    stash_id = request.session.pop(UNDO_STASH_KEY, None)
+    if not stash_id:
+        messages.info(request, "There is nothing to undo.")
+        return redirect("sessions")
+    payload = pending.load_stash(stash_id)
+    if payload is None:
+        messages.error(request, "The undo backup expired or was not found.")
+        return redirect("sessions")
+    try:
+        added = restore_stash(request.user, payload)
+    except KeyError, TypeError, ValueError, InvalidOperation:
+        pending.discard_stash(stash_id)
+        messages.error(request, "The undo backup could not be read.")
+        return redirect("sessions")
+    pending.discard_stash(stash_id)
+    messages.success(
+        request,
+        f"Restored {payload['session']['workout_name']} "
+        f"with {added} set{'' if added == 1 else 's'}.",
     )
     return redirect("sessions")
 

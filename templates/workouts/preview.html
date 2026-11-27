@@ -119,14 +119,61 @@
   </div>
 </div>
 
+{% if comparison.conflicts %}
+<div class="card">
+  <div class="card-head">
+    <h2>Conflicts</h2>
+    <span class="badge badge-warning">{{ comparison.conflicted }}</span>
+  </div>
+  <p class="muted small">These sets exist in the file and in storage with different values. The stored values are kept.</p>
+  <div class="table-wrap">
+    <table class="table">
+      <caption class="visually-hidden">Stored sets that differ from this file</caption>
+      <thead>
+        <tr>
+          <th scope="col" class="nowrap secondary">Date</th>
+          <th scope="col">Workout</th>
+          <th scope="col">Exercise</th>
+          <th scope="col" class="num">Set</th>
+          <th scope="col" class="num">Stored weight (kg)</th>
+          <th scope="col" class="num">File weight (kg)</th>
+          <th scope="col" class="num">Stored reps</th>
+          <th scope="col" class="num">File reps</th>
+        </tr>
+      </thead>
+      <tbody>
+        {% for conflict in comparison.conflicts %}
+        <tr>
+          <td class="muted nowrap secondary">{{ conflict.session_date|isodate }}</td>
+          <td>{{ conflict.workout_name }}</td>
+          <td>{{ conflict.exercise_name }}</td>
+          <td class="num">{{ conflict.set_order|num }}</td>
+          <td class="num">{{ conflict.stored_weight_kg|num }}</td>
+          <td class="num">{{ conflict.file_weight_kg|num }}</td>
+          <td class="num">{{ conflict.stored_reps|num }}</td>
+          <td class="num">{{ conflict.file_reps|num }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </div>
+</div>
+{% endif %}
+
 <div class="card action-bar">
   <div class="action-summary">
     {% if current_sessions %}
-    <strong>Confirming replaces {{ current_sessions }} session{{ current_sessions|pluralize }}{% if current_sets %} and {{ current_sets }} set{{ current_sets|pluralize }}{% endif %} currently stored.</strong>
-    <span class="muted small action-note-secondary">Muscle-group corrections are kept.</span>
+    <strong>Confirming adds {{ comparison.new_sessions }} session{{ comparison.new_sessions|pluralize }} and {{ comparison.new_sets }} set{{ comparison.new_sets|pluralize }}; {{ comparison.existing_sessions }} session{{ comparison.existing_sessions|pluralize }} and {{ comparison.existing_sets }} set{{ comparison.existing_sets|pluralize }} are already stored.</strong>
+    {% if comparison.conflicted %}
+    <span class="muted small">{{ comparison.conflicted }} stored set{{ comparison.conflicted|pluralize }} {% if comparison.conflicted == 1 %}differs{% else %}differ{% endif %} from this file; stored values are kept.</span>
+    {% endif %}
+    {% if comparison.stored_range and comparison.file_range and comparison.file_range.1 < comparison.stored_range.1 %}
+    <span class="muted small">This file ends {{ comparison.file_range.1|isodate }}; you already have data through {{ comparison.stored_range.1|isodate }}.</span>
+    {% endif %}
+    <span class="muted small action-note-secondary">Nothing stored is deleted. Muscle-group corrections are kept.</span>
     {% else %}
     <strong>This is your first import.</strong>
-    <span class="muted small">Nothing is stored for your account yet, so nothing will be replaced.</span>
+    <span class="muted small">Nothing is stored for your account yet, so nothing will be deleted.</span>
     {% endif %}
   </div>
   <form method="post" class="actions">

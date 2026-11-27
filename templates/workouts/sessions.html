@@ -16,6 +16,16 @@
   {% endif %}
 </div>
 
+{% if request.session.undo_stash %}
+<div class="card undo-banner">
+  <form method="post" action="{% url 'undo_delete' %}">
+    {% csrf_token %}
+    <p>A session was deleted. <button class="btn btn-sm" type="submit">Undo delete</button></p>
+    <p class="muted small">Undo is available for a limited time and is lost if the server restarts.</p>
+  </form>
+</div>
+{% endif %}
+
 {% if has_data %}
 <form class="filters" method="get" action="{% url 'sessions' %}" role="search" aria-label="Filter sessions" data-filter-form>
   <div class="filters-field filters-search">
@@ -112,6 +122,10 @@
       {% endfor %}
     </table>
   </div>
+  <form class="session-delete" method="post" action="{% url 'delete_session' session.id %}">
+    {% csrf_token %}
+    <button class="btn btn-danger btn-sm" type="submit">Delete this session</button>
+  </form>
 </details>
 {% endfor %}
 

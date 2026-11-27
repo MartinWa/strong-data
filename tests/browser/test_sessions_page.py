@@ -6,6 +6,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.staticfiles import finders
 from django.urls import reverse
 
+from workouts import pending
 from workouts.models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from workouts.services import import_workouts_csv
 
@@ -285,3 +286,138 @@ def test_the_filtered_empty_state_uses_a_search_icon(client):
 
     assert content.count('class="empty-icon"') == 1
     assert '<circle cx="11" cy="11" r="6.5"/>' in content
+
+
+PULL_DAY_CSV = HEADER + "2026-02-10 18:00:00,Pull Day,47m,Barbell Row,1,60,8,0,0,\n"
+
+
+@pytest.mark.django_db
+def test_each_session_row_offers_a_delete_button(client):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+
+    content = client.get(reverse("sessions")).content.decode()
+
+    assert f'action="{reverse("delete_session", args=[session.pk])}"' in content
+    assert "Delete this session" in content
+
+
+@pytest.mark.django_db
+def test_delete_session_removes_only_that_session_and_keeps_the_rest(client):
+    user = session_with_data()
+    import_workouts_csv(user, PULL_DAY_CSV)
+    client.force_login(user)
+    ExerciseMeta.objects.filter(owner=user).update(muscle_group="Chest")
+    token = ApiToken.objects.create(owner=user, name="laptop", key_hash="b" * 64, prefix="abcdefgh")
+    session = WorkoutSession.objects.get(owner=user, workout_name="Axlar")
+    other = WorkoutSession.objects.get(owner=user, workout_name="Pull Day")
+
+    response = client.post(reverse("delete_session", args=[session.pk]))
+
+    assert response.status_code == 302
+    assert response.url == reverse("sessions")
+    assert not WorkoutSession.objects.filter(pk=session.pk).exists()
+    assert not WorkoutSet.objects.filter(session_id=session.pk).exists()
+    assert WorkoutSession.objects.filter(pk=other.pk).exists()
+    assert WorkoutSet.objects.filter(session_id=other.pk).count() == 1
+    assert set(ExerciseMeta.objects.filter(owner=user).values_list("muscle_group", flat=True)) == {
+        "Chest"
+    }
+    assert ApiToken.objects.filter(pk=token.pk).exists()
+    stash_id = client.session["undo_stash"]
+    payload = pending.load_stash(stash_id)
+    assert payload["session"]["workout_name"] == "Axlar"
+    assert len(payload["sets"]) == 4
+    content = client.get(reverse("sessions")).content.decode()
+    assert "Undo delete" in content
+
+
+@pytest.mark.django_db
+def test_delete_session_rejects_get_and_other_owners_sessions(client):
+    alice = session_with_data("alice")
+    bob = session_with_data("bob")
+    client.force_login(alice)
+    bob_session = WorkoutSession.objects.get(owner=bob)
+    own = WorkoutSession.objects.get(owner=alice)
+
+    assert client.post(reverse("delete_session", args=[bob_session.pk])).status_code == 404
+    assert client.get(reverse("delete_session", args=[own.pk])).status_code == 405
+    assert WorkoutSession.objects.filter(owner=alice).exists()
+    assert WorkoutSession.objects.filter(owner=bob).exists()
+
+
+@pytest.mark.django_db
+def test_undo_restores_the_deleted_session_and_its_sets(client):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    assert not WorkoutSession.objects.filter(owner=user).exists()
+
+    response = client.post(reverse("undo_delete"), follow=True)
+
+    assert response.status_code == 200
+    restored = WorkoutSession.objects.get(owner=user)
+    assert restored.workout_name == "Axlar"
+    assert restored.set_count == 4
+    assert WorkoutSet.objects.filter(session=restored).count() == 4
+    assert "undo_stash" not in client.session
+    assert "Restored Axlar with 4 sets." in response.content.decode()
+    assert "Undo delete" not in client.get(reverse("sessions")).content.decode()
+
+
+@pytest.mark.django_db
+def test_undo_after_a_reimport_does_not_duplicate_rows(client):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    import_workouts_csv(user, GROUPED_CSV)
+
+    client.post(reverse("undo_delete"))
+
+    assert WorkoutSession.objects.filter(owner=user).count() == 1
+    assert WorkoutSet.objects.filter(owner=user).count() == 4
+
+
+@pytest.mark.django_db
+def test_undo_without_a_stash_reports_nothing_to_undo(client):
+    user = session_with_data()
+    client.force_login(user)
+
+    response = client.post(reverse("undo_delete"), follow=True)
+
+    assert response.status_code == 200
+    assert "There is nothing to undo." in response.content.decode()
+    assert WorkoutSession.objects.filter(owner=user).count() == 1
+
+
+@pytest.mark.django_db
+def test_undo_with_a_missing_stash_reports_expiry(client):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    pending.discard_stash(client.session["undo_stash"])
+
+    response = client.post(reverse("undo_delete"), follow=True)
+
+    assert response.status_code == 200
+    assert "The undo backup expired or was not found." in response.content.decode()
+    assert not WorkoutSession.objects.filter(owner=user).exists()
+
+
+@pytest.mark.django_db
+def test_undo_with_a_corrupt_stash_reports_it_unreadable(client):
+    user = session_with_data()
+    client.force_login(user)
+    session = WorkoutSession.objects.get(owner=user)
+    client.post(reverse("delete_session", args=[session.pk]))
+    pending.save_stash(client.session["undo_stash"], {"session": {}})
+
+    response = client.post(reverse("undo_delete"), follow=True)
+
+    assert response.status_code == 200
+    assert "The undo backup could not be read." in response.content.decode()
+    assert not WorkoutSession.objects.filter(owner=user).exists()

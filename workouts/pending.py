@@ -10,7 +10,11 @@ from pathlib import Path
 
 from parsing import ParsedWorkouts
 
+from .limits import MAX_UPLOAD_BYTES
+
 PENDING_TTL_SECONDS = 3600
+UNDO_TTL_SECONDS = int(os.environ.get("STRONG_UNDO_TTL_SECONDS", "86400"))
+STASH_MAX_BYTES = MAX_UPLOAD_BYTES
 SAMPLE_SET_LIMIT = 20
 WARNING_ROW_LIMIT = 20
 PREVIEW_SESSION_LIMIT = 200
@@ -84,14 +88,68 @@ def discard(import_id: str) -> None:
             continue
 
 
-def purge_stale(ttl_seconds: int = PENDING_TTL_SECONDS) -> int:
+def undo_dir() -> Path:
+    return pending_dir() / "undo"
+
+
+def _stash_path(stash_id: str) -> Path | None:
+    if not IMPORT_ID_PATTERN.fullmatch(stash_id):
+        return None
+    return undo_dir() / f"{stash_id}.json"
+
+
+def save_stash(stash_id: str, payload: dict) -> bool:
+    path = _stash_path(stash_id)
+    if path is None:
+        return False
+    raw = json.dumps(payload)
+    if len(raw.encode("utf-8")) > STASH_MAX_BYTES:
+        return False
+    undo_dir().mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.write_text(raw, encoding="utf-8")
+    path.chmod(0o600)
+    return True
+
+
+def load_stash(stash_id: str) -> dict | None:
+    path = _stash_path(stash_id)
+    if path is None:
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError, ValueError:
+        return None
+    return data if isinstance(data, dict) else None
+
+
+def discard_stash(stash_id: str) -> None:
+    path = _stash_path(stash_id)
+    if path is None:
+        return
+    with contextlib.suppress(OSError):
+        path.unlink(missing_ok=True)
+
+
+def purge_stale(
+    ttl_seconds: int = PENDING_TTL_SECONDS, undo_ttl_seconds: int = UNDO_TTL_SECONDS
+) -> int:
     try:
         entries = list(pending_dir().iterdir())
     except OSError:
         return 0
-    cutoff = time.time() - ttl_seconds
+    removed = _purge_files(entries, time.time() - ttl_seconds)
+    try:
+        undo_entries = list(undo_dir().iterdir())
+    except OSError:
+        return removed
+    return removed + _purge_files(undo_entries, time.time() - undo_ttl_seconds)
+
+
+def _purge_files(entries, cutoff: float) -> int:
     removed = 0
     for path in entries:
+        if path.is_dir():
+            continue
         try:
             if path.stat().st_mtime < cutoff:
                 path.unlink()

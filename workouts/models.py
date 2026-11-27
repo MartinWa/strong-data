@@ -126,6 +126,10 @@ class WorkoutSet(models.Model):
             models.CheckConstraint(
                 condition=models.Q(volume_kg__gte=0), name="check_set_volume_positive"
             ),
+            models.UniqueConstraint(
+                fields=["session", "exercise", "set_order", "set_time"],
+                name="uniq_set_session_exercise_order_time",
+            ),
         ]
 
     def __str__(self):

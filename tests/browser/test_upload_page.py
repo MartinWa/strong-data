@@ -135,16 +135,55 @@ def test_upload_picker_only_offers_csv_files(client):
 
 
 @pytest.mark.django_db
-def test_preview_states_what_the_import_replaces(client):
+def test_preview_states_what_the_import_merges(client):
     user = signed_in(client)
     import_workouts_csv(user, TWO_SESSIONS)
 
     upload(client)
     content = client.get(reverse("preview")).content.decode()
 
-    assert "Confirming replaces 2 sessions and 3 sets currently stored." in content
-    assert content.count("replaces") == 1
+    assert (
+        "Confirming adds 0 sessions and 0 sets; 1 session and 1 set are already stored." in content
+    )
+    assert "This file ends 2026-01-05; you already have data through 2026-02-10." in content
+    assert "Nothing stored is deleted." in content
+    assert "replaces" not in content
     assert "Muscle-group corrections are kept." in content
+
+
+@pytest.mark.django_db
+def test_preview_counts_new_and_existing_sessions_and_sets(client):
+    user = signed_in(client)
+    import_workouts_csv(user, TWO_SESSIONS)
+    extra = (
+        HEADER
+        + "2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,80,5,0,0,8\n"
+        + "2026-03-01 10:00:00,Legs Day,60m,Squat,1,100,5,0,0,9\n"
+    )
+
+    upload(client, extra)
+    content = client.get(reverse("preview")).content.decode()
+
+    assert "Confirming adds 1 session and 1 set; 1 session and 1 set are already stored." in content
+    assert "This file ends" not in content
+
+
+@pytest.mark.django_db
+def test_preview_reports_conflicts_with_stored_values_kept(client):
+    user = signed_in(client)
+    import_workouts_csv(user, TWO_SESSIONS)
+    conflicting = HEADER + "2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,90,5,0,0,8\n"
+
+    upload(client, conflicting)
+    content = client.get(reverse("preview")).content.decode()
+
+    assert "1 stored set differs from this file; stored values are kept." in content
+    assert (
+        "Confirming adds 0 sessions and 0 sets; 1 session and 1 set are already stored." in content
+    )
+    conflicts_card = content[content.index("<h2>Conflicts</h2>") :]
+    assert "Bench Press (Barbell)" in conflicts_card
+    assert "Push Day" in conflicts_card
 
 
 @pytest.mark.django_db
@@ -155,6 +194,7 @@ def test_preview_on_a_first_run_is_not_destructive(client):
     content = client.get(reverse("preview")).content.decode()
 
     assert "This is your first import." in content
+    assert "nothing will be deleted" in content
     assert "replaces" not in content
 
 
