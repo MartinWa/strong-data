@@ -19,7 +19,7 @@
 {% if undo_stashes %}
 <div class="card undo-banner">
   <h2 id="undo-heading">Recently deleted sessions</h2>
-  <p class="muted small">Most recent first. Undo is available for a limited time and is lost if the server restarts.</p>
+  <p class="muted small">Most recent first. Undo is available until you sign out, the backup expires, or the container restarts.</p>
   <form method="post" action="{% url 'undo_delete' %}" aria-labelledby="undo-heading">
     {% csrf_token %}
     <ul>

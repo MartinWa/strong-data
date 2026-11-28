@@ -99,7 +99,7 @@ def test_reimport_after_timezone_change_uses_the_stored_sessions_zone():
         comparison = services.compare_import(user, parse_workouts(export))
         result = import_workouts_csv(user, export)
 
-    assert (comparison["new_sets"], comparison["existing_sets"]) == (2, 1)
+    assert (comparison["new_sets"], comparison["skipped_sets"]) == (2, 1)
     assert (result.added_sets, result.skipped_sets, result.conflicted) == (2, 1, 0)
     push = WorkoutSession.objects.get(owner=user, workout_name="Push Day")
     pull = WorkoutSession.objects.get(owner=user, workout_name="Pull Day")
@@ -310,7 +310,7 @@ def test_complete_export_adds_a_missing_set_even_when_it_shares_a_source_order()
     result = import_workouts_csv(user, complete)
 
     assert comparison["new_sets"] == 1
-    assert comparison["existing_sets"] == 1
+    assert comparison["skipped_sets"] == 1
     assert comparison["conflicted"] == 0
     assert (result.added_sets, result.skipped_sets, result.conflicted) == (1, 1, 0)
     assert WorkoutSet.objects.filter(owner=user).count() == 2
@@ -371,18 +371,22 @@ def test_same_timestamp_different_set_order_are_distinct_sets():
 
 
 @pytest.mark.django_db
-def test_same_key_different_values_in_one_file_are_both_stored_and_reimport_is_clean():
+@pytest.mark.parametrize(("second_weight", "second_volume"), [("90", "450"), ("80.004", "400.02")])
+def test_same_key_different_values_in_one_file_are_both_stored_and_reimport_is_clean(
+    second_weight, second_volume
+):
     user = get_user_model().objects.create_user(username="alice", password="x")
     duplicate = csv_text(
         "2026-01-05 08:30:00,Push Day,54m,Bench,1,80,5,0,0,8",
-        "2026-01-05 08:30:00,Push Day,54m,Bench,1,90,5,0,0,8",
+        f"2026-01-05 08:30:00,Push Day,54m,Bench,1,{second_weight},5,0,0,8",
     )
 
     result = import_workouts_csv(user, duplicate)
     assert result.added_sets == 2
-    assert sorted(WorkoutSet.objects.filter(owner=user).values_list("set_order", flat=True)) == [
-        1,
-        2,
+    sets = WorkoutSet.objects.filter(owner=user).order_by("set_order")
+    assert list(sets.values_list("set_order", "volume_kg")) == [
+        (1, Decimal("400")),
+        (2, Decimal(second_volume)),
     ]
 
     reimport = import_workouts_csv(user, duplicate)
@@ -397,7 +401,7 @@ def test_values_are_compared_at_stored_precision():
         HEADER
         + "\n"
         + "\n".join(
-            row.replace(",80,5,0,0,8.0", ",80.004,5,0,0,8.0")
+            row.replace(",80,5,0,0,8.0", ",80.0004,5,0,0,8.0")
             for row in FIRST_EXPORT.splitlines()[1:]
         )
         + "\n"

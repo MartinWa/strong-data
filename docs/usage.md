@@ -46,7 +46,9 @@ missing and never removes anything that is not in the file.
 
 If distinct sets in a session share the same exercise, timestamp and CSV set
 order, the app gives them separate stored orders. It keeps their original CSV
-order for matching later imports and undo restores.
+order for matching later imports and undo restores. Matching compares set values
+at stored precision, including volume and estimated 1RM. The preview's skipped
+set count includes sets already stored and repeated rows in the file.
 
 Each session keeps the time zone it was imported in. Later exports use that zone
 to match sets in the session, including after a server time zone change. New
@@ -112,9 +114,11 @@ names, so a search does not fold scripts and a hiragana query does not find a
 katakana exercise name.
 
 Each session has a *Delete this session* button. The *Recently deleted sessions*
-list shows an *Undo delete* button for each available backup, newest first. Backups
-expire after 24 hours by default or when the container restarts. If a session has
-been re-imported, undo merges the backup using that session's import time zone.
+list shows an *Undo delete* button for each available backup, newest first. Undo
+is available in the sign-in session that deleted the workout. Signing out clears
+the list. Backups expire after 24 hours by default or when the container
+restarts. If a session has been re-imported, undo merges the backup using that
+session's import time zone and fills a missing duration from the backup.
 If the database is busy, try the delete or undo again. *Delete all sessions* at
 the bottom of the page deletes every session and set for your account after a
 second confirmation.

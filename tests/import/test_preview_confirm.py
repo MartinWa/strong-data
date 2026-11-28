@@ -97,6 +97,6 @@ def test_confirm_recomputes_the_merge_against_the_database(client):
 
     assert response.status_code == 200
     assert response.redirect_chain == [(reverse("sessions"), 302)]
-    assert (
-        "Imported 0 sessions and 0 sets. (1 skipped as already stored)" in response.content.decode()
-    )
+    content = response.content.decode()
+    assert "Imported 0 sessions and 0 sets." in content
+    assert "1 skipped as already stored or repeated in the file" in content

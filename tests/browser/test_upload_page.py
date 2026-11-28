@@ -142,9 +142,8 @@ def test_preview_states_what_the_import_merges(client):
     upload(client)
     content = client.get(reverse("preview")).content.decode()
 
-    assert (
-        "Confirming adds 0 sessions and 0 sets; 1 session and 1 set are already stored." in content
-    )
+    assert "Confirming adds 0 sessions and 0 sets. 1 session already stored." in content
+    assert "Skipping 1 set already stored or repeated in the file." in content
     assert "This file ends 2026-01-05; you already have data through 2026-02-10." in content
     assert "Nothing stored is deleted." in content
     assert "replaces" not in content
@@ -164,31 +163,38 @@ def test_preview_counts_new_and_existing_sessions_and_sets(client):
     upload(client, extra)
     content = client.get(reverse("preview")).content.decode()
 
-    assert "Confirming adds 1 session and 1 set; 1 session and 1 set are already stored." in content
+    assert "Confirming adds 1 session and 1 set. 1 session already stored." in content
+    assert "Skipping 1 set already stored or repeated in the file." in content
     assert "This file ends" not in content
 
 
 @pytest.mark.django_db
-def test_preview_reports_conflicts_with_the_changed_field_shown(client):
+@pytest.mark.parametrize(
+    ("weight", "rpe", "change"),
+    [("80", "9", "rpe: 8 → 9"), ("80.004", "8", "volume: 400 → 400.02")],
+)
+def test_preview_reports_conflicts_with_the_changed_field_shown(client, weight, rpe, change):
     user = signed_in(client)
     import_workouts_csv(user, TWO_SESSIONS)
-    conflicting = HEADER + "2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,80,5,0,0,9\n"
+    conflicting = (
+        HEADER + f"2026-01-05 09:00:00,Push Day,54m,Bench Press (Barbell),1,{weight},5,0,0,{rpe}\n"
+    )
 
     upload(client, conflicting)
     content = client.get(reverse("preview")).content.decode()
 
     assert "1 stored set differs from this file; stored values are kept." in content
-    assert (
-        "Confirming adds 0 sessions and 0 sets; 1 session and 1 set are already stored." in content
-    )
+    assert "Confirming adds 0 sessions and 0 sets. 1 session already stored." in content
     conflicts_card = content[content.index("<h2>Conflicts</h2>") :]
+    assert '<th scope="col" class="nowrap">Date</th>' in conflicts_card
+    assert '<td class="muted nowrap">2026-01-05</td>' in conflicts_card
     assert "Bench Press (Barbell)" in conflicts_card
     assert "Push Day" in conflicts_card
-    assert "rpe: 8 → 9" in conflicts_card
+    assert change in conflicts_card
 
 
 @pytest.mark.django_db
-def test_preview_counts_match_what_confirm_inserts_for_duplicate_rows(client):
+def test_preview_labels_in_file_duplicates_as_skipped(client):
     user = signed_in(client)
     import_workouts_csv(user, TWO_SESSIONS)
     duplicate = (
@@ -200,9 +206,8 @@ def test_preview_counts_match_what_confirm_inserts_for_duplicate_rows(client):
     upload(client, duplicate)
     content = client.get(reverse("preview")).content.decode()
 
-    assert (
-        "Confirming adds 1 session and 1 set; 0 sessions and 1 set are already stored." in content
-    )
+    assert "Confirming adds 1 session and 1 set. 0 sessions already stored." in content
+    assert "Skipping 1 set already stored or repeated in the file." in content
 
 
 @pytest.mark.django_db

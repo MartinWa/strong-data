@@ -206,7 +206,7 @@ def preview(request):
         )
         notes = []
         if result.skipped_sets:
-            notes.append(f"{result.skipped_sets} skipped as already stored")
+            notes.append(f"{result.skipped_sets} skipped as already stored or repeated in the file")
         if result.conflicted:
             plural = "" if result.conflicted == 1 else "s"
             notes.append(f"{result.conflicted} conflict{plural} kept as stored")

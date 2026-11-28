@@ -34,20 +34,24 @@ class ImportResult:
 
 
 KEY_CHUNK = 500
-VALUE_FIELDS = ("weight_kg", "reps", "rpe", "distance", "seconds")
 VALUE_PRECISION = {
     "weight_kg": Decimal("0.01"),
     "reps": None,
     "rpe": Decimal("0.1"),
     "distance": Decimal("0.01"),
     "seconds": Decimal("0.01"),
+    "volume_kg": Decimal("0.01"),
+    "est_1rm_kg": Decimal("0.01"),
 }
+VALUE_FIELDS = tuple(VALUE_PRECISION)
 FIELD_LABELS = {
     "weight_kg": "weight",
     "reps": "reps",
     "rpe": "rpe",
     "distance": "distance",
     "seconds": "seconds",
+    "volume_kg": "volume",
+    "est_1rm_kg": "estimated 1RM",
 }
 CONFLICT_SAMPLE_LIMIT = 20
 
@@ -142,9 +146,7 @@ def _classify(file_sessions, stored_sessions, exercise_ids, stored_sets, default
         for item in sets:
             exercise_key = exercise_ids.get(item.exercise_name, item.exercise_name)
             set_time = _file_set_time(item, zone)
-            values = _norm_values(
-                (item.weight_kg, item.reps, item.rpe, item.distance, item.seconds)
-            )
+            values = _norm_values(getattr(item, field) for field in VALUE_FIELDS)
             by_source_order = file_groups[(session_key, exercise_key, set_time)]
             by_source_order[item.set_order].append((key, item, values))
 
@@ -241,7 +243,7 @@ def _merge_once(user, parsed: ParsedWorkouts) -> ImportResult:
                 conflicted += 1
                 continue
             added_sets += 1
-            weight_kg, reps, rpe, distance, seconds = values
+            weight_kg, reps, rpe, distance, seconds, volume_kg, est_1rm_kg = values
             set_rows.append(
                 WorkoutSet(
                     owner=user,
@@ -255,8 +257,8 @@ def _merge_once(user, parsed: ParsedWorkouts) -> ImportResult:
                     distance=distance,
                     seconds=seconds,
                     set_time=set_time,
-                    volume_kg=item.volume_kg,
-                    est_1rm_kg=item.est_1rm_kg,
+                    volume_kg=volume_kg,
+                    est_1rm_kg=est_1rm_kg,
                 )
             )
         WorkoutSet.objects.bulk_create(set_rows)
@@ -335,15 +337,15 @@ def compare_import(user, parsed: ParsedWorkouts) -> dict:
     existing_sessions = len(stored_sessions)
     new_sessions = len(pairs) - existing_sessions
     new_sets = 0
-    existing_sets = 0
+    skipped_sets = 0
     conflicted = 0
     conflicts = []
     for key, item, order, decision, values, _set_time, previous_values in decisions:
         if decision == "skip":
-            existing_sets += 1
+            skipped_sets += 1
             continue
         if decision == "conflict":
-            existing_sets += 1
+            skipped_sets += 1
             conflicted += 1
             if len(conflicts) < CONFLICT_SAMPLE_LIMIT:
                 changes = [
@@ -377,7 +379,7 @@ def compare_import(user, parsed: ParsedWorkouts) -> dict:
         "new_sessions": new_sessions,
         "existing_sessions": existing_sessions,
         "new_sets": new_sets,
-        "existing_sets": existing_sets,
+        "skipped_sets": skipped_sets,
         "conflicted": conflicted,
         "file_range": (min(dates), max(dates)) if dates else None,
         "stored_range": (
@@ -430,6 +432,7 @@ def _parse_aware(value: str, zone):
 
 def restore_stash(user, payload: dict) -> int:
     data = payload["session"]
+    duration_min = data.get("duration_min")
     stash_zone = ZoneInfo(data.get("import_time_zone") or timezone.get_default_timezone_name())
     with transaction.atomic():
         session, _created = WorkoutSession.objects.get_or_create(
@@ -440,7 +443,7 @@ def restore_stash(user, payload: dict) -> int:
                 "program": data.get("program") or "",
                 "start_time": _parse_aware(data["start_time"], stash_zone),
                 "import_time_zone": stash_zone.key,
-                "duration_min": data.get("duration_min"),
+                "duration_min": duration_min,
                 "set_count": 0,
                 "total_volume_kg": Decimal(0),
             },
@@ -479,6 +482,8 @@ def restore_stash(user, payload: dict) -> int:
                         _decimal_or_none(item.get("rpe")),
                         _decimal_or_none(item.get("distance")),
                         _decimal_or_none(item.get("seconds")),
+                        _decimal_or_none(item.get("volume_kg")) or Decimal(0),
+                        _decimal_or_none(item.get("est_1rm_kg")),
                     )
                 )
                 signature = (source_order, values)
@@ -486,7 +491,7 @@ def restore_stash(user, payload: dict) -> int:
                     remaining[signature] -= 1
                     continue
                 order = _allocate_set_order(preferred_order, taken, fallback_orders)
-                weight_kg, reps, rpe, distance, seconds = values
+                weight_kg, reps, rpe, distance, seconds, volume_kg, est_1rm_kg = values
                 rows.append(
                     WorkoutSet(
                         owner=user,
@@ -500,8 +505,8 @@ def restore_stash(user, payload: dict) -> int:
                         distance=distance,
                         seconds=seconds,
                         set_time=set_time,
-                        volume_kg=_decimal_or_none(item.get("volume_kg")) or Decimal(0),
-                        est_1rm_kg=_decimal_or_none(item.get("est_1rm_kg")),
+                        volume_kg=volume_kg,
+                        est_1rm_kg=est_1rm_kg,
                     )
                 )
         WorkoutSet.objects.bulk_create(rows)
@@ -515,5 +520,6 @@ def restore_stash(user, payload: dict) -> int:
             set_count=aggregate["count"],
             total_volume_kg=volume,
             start_time=min(_utc(session.start_time), _utc(aggregate["first"])),
+            duration_min=session.duration_min if session.duration_min is not None else duration_min,
         )
     return len(rows)

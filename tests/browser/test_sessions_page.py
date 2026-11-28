@@ -530,7 +530,10 @@ def test_undo_restores_identical_valued_sets_with_different_orders(
 
 
 @pytest.mark.django_db
-def test_undo_after_partial_reimport_does_not_duplicate_sets(client):
+@pytest.mark.parametrize(("fragment_duration", "expected_duration"), [("", 54), ("0m", 0)])
+def test_undo_after_partial_reimport_does_not_duplicate_sets(
+    client, fragment_duration, expected_duration
+):
     user = get_user_model().objects.create_user(username="alice", password="x")
     duplicate = HEADER + (
         "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,80,5,0,0,8\n"
@@ -541,7 +544,10 @@ def test_undo_after_partial_reimport_does_not_duplicate_sets(client):
     session = WorkoutSession.objects.get(owner=user)
     client.post(reverse("delete_session", args=[session.pk]))
     stash_id = newest_undo_stash(client)
-    fragment = HEADER + "2026-01-05 09:00:00,Axlar, 54m,Bench Press (Barbell),1,90,5,0,0,8\n"
+    fragment = (
+        HEADER
+        + f"2026-01-05 09:00:00,Axlar,{fragment_duration},Bench Press (Barbell),1,90,5,0,0,8\n"
+    )
     import_workouts_csv(user, fragment)
 
     client.post(reverse("undo_delete"), {"stash_id": stash_id})
@@ -552,6 +558,7 @@ def test_undo_after_partial_reimport_does_not_duplicate_sets(client):
         Decimal("80.00"),
         Decimal("90.00"),
     ]
+    assert WorkoutSession.objects.get(owner=user).duration_min == expected_duration
     result = import_workouts_csv(user, duplicate)
     assert (result.added_sets, result.skipped_sets, result.conflicted) == (0, 2, 0)
 
