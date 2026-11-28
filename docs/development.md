@@ -33,7 +33,10 @@ uv run python tools/check_no_private_data.py
 ```
 
 CI runs these in the Linux development container, plus the lockfile check, the
-dependency and image audits and the production-image check. To reproduce CI's
+dependency and image audits and the production-image check. Images that get
+audited or published are built without the layer cache, so the Debian packages
+they inherit are upgraded on every run instead of a cached `apt-get upgrade`
+leaving fixes unapplied while the scan reports them. To reproduce CI's
 environment locally:
 
 ```sh
