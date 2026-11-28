@@ -71,11 +71,10 @@ Dates are ISO `YYYY-MM-DD`; timestamps are ISO 8601 in UTC with a trailing `Z`
 (for example `2026-01-05T09:00:00Z`). Numeric values are JSON numbers and missing
 values are `null`, never `0`.
 
-The export records wall-clock times without an offset, so they are absolute only
-relative to the installation's `STRONG_TIME_ZONE` (default `UTC`), which is read
-at import time. Two installations with different zones that import the same file
-will store different UTC instants; a client should not assume the `Z` value equals
-the clock in the export.
+The export records wall-clock times without an offset. A new session interprets
+them in the installation's `STRONG_TIME_ZONE` (default `UTC`) and keeps that zone
+for later merges. Two installations with different import zones can store different
+UTC instants from the same file.
 
 ## Validation guardrails
 

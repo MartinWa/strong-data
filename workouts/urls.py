@@ -9,6 +9,8 @@ urlpatterns = [
     path("preview/", views.preview, name="preview"),
     path("sessions/", views.sessions, name="sessions"),
     path("sessions/delete/", views.delete_sessions, name="delete_sessions"),
+    path("sessions/<int:pk>/delete/", views.delete_session, name="delete_session"),
+    path("sessions/undo/", views.undo_delete, name="undo_delete"),
     path("reports/", views.reports, name="reports"),
     path("reports/exercise/<path:name>/", views.report_exercise, name="report_exercise"),
     path(

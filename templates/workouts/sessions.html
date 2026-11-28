@@ -16,6 +16,24 @@
   {% endif %}
 </div>
 
+{% if undo_stashes %}
+<div class="card undo-banner">
+  <h2 id="undo-heading">Recently deleted sessions</h2>
+  <p class="muted small">Most recent first. Undo is available until you sign out, the backup expires, or the container restarts.</p>
+  <form method="post" action="{% url 'undo_delete' %}" aria-labelledby="undo-heading">
+    {% csrf_token %}
+    <ul>
+      {% for stash in undo_stashes %}
+      <li>
+        <button class="btn btn-sm" type="submit" name="stash_id" value="{{ stash.id }}" aria-describedby="undo-time-{{ forloop.counter }}">Undo delete of {{ stash.session }}</button>
+        <span class="muted small" id="undo-time-{{ forloop.counter }}">Deleted {{ stash.deleted_at|date:"Y-m-d H:i:s" }}</span>
+      </li>
+      {% endfor %}
+    </ul>
+  </form>
+</div>
+{% endif %}
+
 {% if has_data %}
 <form class="filters" method="get" action="{% url 'sessions' %}" role="search" aria-label="Filter sessions" data-filter-form>
   <div class="filters-field filters-search">
@@ -62,7 +80,7 @@
 {% endif %}
 
 {% for session in page %}
-<details class="card session" data-print-open>
+<details class="card session" data-print-open{% if request.GET.open == session.id|stringformat:"s" %} open{% endif %}>
   <summary class="session-head">
     <span class="session-heading">
       <span class="session-date"><time datetime="{{ session.session_date|isodate }}">{{ session.session_date|isodate }}</time></span>
@@ -112,6 +130,16 @@
       {% endfor %}
     </table>
   </div>
+  <form class="session-delete" method="post" action="{% url 'delete_session' session.id %}{% if request.GET %}?{{ request.GET.urlencode }}{% endif %}">
+    {% csrf_token %}
+    {% if request.GET.confirm_delete == session.id|stringformat:"s" %}
+    <input type="hidden" name="confirm" value="1">
+    <button class="btn btn-danger btn-sm" type="submit">Really delete this session (no undo)</button>
+    <a class="btn btn-ghost btn-sm" href="{% url 'sessions' %}">Cancel</a>
+    {% else %}
+    <button class="btn btn-danger btn-sm" type="submit">Delete this session</button>
+    {% endif %}
+  </form>
 </details>
 {% endfor %}
 

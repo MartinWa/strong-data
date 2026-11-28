@@ -37,17 +37,36 @@ upload page repeats these steps where you need them.
 
 ![The preview page: the sessions in the file and a sample of their sets, before anything is written](images/import-preview.png)
 
-### Confirming replaces your previous data
+### Confirming merges into your stored data
 
-An import **replaces everything you previously imported**: sessions, sets and
-exercise names are deleted and rebuilt from the file in one transaction. That
-makes re-importing the same export idempotent instead of duplicating it, and it
-means you should upload the **complete** export every time — a partial export
-removes everything that is not in it.
+An import **only adds**: sessions and sets that are not stored yet are inserted,
+and everything already stored is kept exactly as it is. Re-importing the same
+export changes nothing, and a partial or older export is safe — it adds what is
+missing and never removes anything that is not in the file.
 
-Muscle-group corrections are the exception: they are stored per exercise name and
-survive imports, including corrections for exercises the new export does not
-contain.
+If distinct sets in a session share the same exercise, timestamp and CSV set
+order, the app gives them separate stored orders. It keeps their original CSV
+order for matching later imports and undo restores. Matching compares set values
+at stored precision, including volume and estimated 1RM. The preview's skipped
+set count includes sets already stored and repeated rows in the file.
+
+Each session keeps the time zone it was imported in. Later exports use that zone
+to match sets in the session, including after a server time zone change. New
+sessions use the server's current setting.
+
+What a re-import does with changes you made in Strong:
+
+| Change in Strong | After re-import |
+| --- | --- |
+| Added a workout or sets | They are added |
+| Edited a set (weight, reps, …) | The stored values win; the preview reports how many stored sets differ from the file |
+| Deleted a workout | It stays stored — imports never delete. Use *Delete this session* inside the session on `/sessions/` (with undo), or *Delete all sessions* to remove everything |
+| Deleted or inserted a set mid-workout | The shifted sets import as extra rows |
+| Renamed an exercise or a workout | Its sets, or the whole session, import again as new rows; the old rows stay |
+| Same workout name twice on one day | Treated as one session |
+
+Muscle-group corrections are stored per exercise name and survive imports,
+including corrections for exercises the new export does not contain.
 
 ## Warnings
 
@@ -85,8 +104,7 @@ file, and confirming imports all of it.
 `/sessions/` lists your sessions newest first with date, workout, program and
 totals. Open a row for its sets with weight, reps, RPE, volume and estimated 1RM,
 grouped per exercise with set numbering restarting at 1 for each exercise. It
-shows what is stored now, so after a replacement import it shows only the new
-export.
+shows what is stored now: everything you have ever imported, merged.
 
 Three filters narrow the list: text matching the workout *or* an exercise name, a
 program dropdown, and an optional date range. They combine, apply to whole
@@ -95,16 +113,24 @@ sessions (a matched session still shows all of its sets) and survive paging;
 names, so a search does not fold scripts and a hiragana query does not find a
 katakana exercise name.
 
-*Delete all sessions* at the bottom of the page deletes every session and set for
-your account after a second confirmation. Corrections and tokens are kept, so a
-later import reuses your corrections instead of re-guessing them.
+Each session has a *Delete this session* button. The *Recently deleted sessions*
+list shows an *Undo delete* button for each available backup, newest first. Undo
+is available in the sign-in session that deleted the workout. Signing out clears
+the list. Backups expire after 24 hours by default or when the container
+restarts. If a session has been re-imported, undo merges the backup using that
+session's import time zone and fills a missing duration from the backup.
+If the database is busy, try the delete or undo again. *Delete all sessions* at
+the bottom of the page deletes every session and set for your account after a
+second confirmation.
+Corrections and tokens are kept, so a later import reuses your corrections instead
+of re-guessing them.
 
 The pager numbers the pages around the one you are on, and printing from the
 browser expands every session, drops the navigation and prints on a white sheet
 even when you use the dark theme.
 
-There is nothing to export from the app: the Strong CSV you imported is the
-export, and sending it again reproduces the data.
+There is nothing to export from the app: the Strong CSV is the export format,
+and importing the same file again changes nothing.
 
 ## Reports
 

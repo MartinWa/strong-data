@@ -16,8 +16,9 @@ Settings are read from the environment: `STRONG_SECRET_KEY`, `STRONG_DEBUG`,
 `.env.example`; never commit a real `.env`. With `STRONG_DEBUG` unset the app runs
 in production mode and refuses to start without a real secret key, so either
 export one or set `STRONG_DEBUG=true` for the local fallback. `STRONG_TIME_ZONE`
-sets the zone the export's wall-clock timestamps are read in and the zone the UI
-and API render. The test suite supplies its own synthetic key through
+sets the import zone for new sessions and the zone used to render local times.
+Existing sessions keep their import zone for later merges. The test suite
+supplies its own synthetic key through
 `tests/settings.py`, so `uv run pytest -q` needs no environment.
 
 ## Commands
@@ -32,7 +33,10 @@ uv run python tools/check_no_private_data.py
 ```
 
 CI runs these in the Linux development container, plus the lockfile check, the
-dependency and image audits and the production-image check. To reproduce CI's
+dependency and image audits and the production-image check. Images that get
+audited or published are built without the layer cache, so the Debian packages
+they inherit are upgraded on every run instead of a cached `apt-get upgrade`
+leaving fixes unapplied while the scan reports them. To reproduce CI's
 environment locally:
 
 ```sh

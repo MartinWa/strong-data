@@ -24,15 +24,17 @@ records, muscle-group corrections and a token-authenticated API.
   telemetry, nothing loaded from a CDN
 - Reports for training load, muscle balance, consistency, personal records and a
   year-over-year comparison, all server-rendered and printable
-- Idempotent import: confirming an export replaces what is stored instead of
-  duplicating it
+- Merging import: confirming an export adds what is not stored yet and never
+  deletes; re-importing the same export changes nothing
+- Individual session deletion on the Sessions page, with time-limited undo in
+  the current sign-in session
 - Read-only, versioned, owner-scoped API with a generated OpenAPI reference
 
 ## What it looks like
 
 **Importing** is always two steps. The preview lists the sessions in the file and a
 sample of their sets, and flags every row that would be skipped or blanked together
-with the reason — so a bad export is caught before it replaces anything.
+with the reason — so a bad export is caught before anything is written.
 
 ![The import preview: the sessions in the file and a sample of their sets](docs/images/import-preview.png)
 

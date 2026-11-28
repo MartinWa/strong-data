@@ -1,8 +1,10 @@
 import hashlib
 import hmac
+import json
 import secrets
 import time
-from datetime import date
+from datetime import date, datetime
+from decimal import InvalidOperation
 from urllib.parse import urlencode
 
 from django.contrib import messages
@@ -12,7 +14,7 @@ from django.db import IntegrityError, OperationalError, transaction
 from django.db.models import Count, Q
 from django.forms import modelformset_factory
 from django.http import Http404
-from django.shortcuts import redirect, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.urls import reverse
 from django.utils import timezone
 from django.views.decorators.http import require_POST
@@ -31,7 +33,14 @@ from .forms import (
 from .limits import MAX_UPLOAD_BYTES, MULTIPART_OVERHEAD_BYTES
 from .models import ApiToken, Exercise, ExerciseMeta, WorkoutSession, WorkoutSet
 from .reports import build_exercise_report, build_report
-from .services import EmptyImportError, import_workouts_csv
+from .services import (
+    EmptyImportError,
+    ImportLimitError,
+    compare_import,
+    import_workouts_csv,
+    restore_stash,
+    stash_session,
+)
 
 MUSCLES_PAGE_SIZE = 100
 ExerciseMetaFormSet = modelformset_factory(
@@ -42,6 +51,7 @@ ExerciseMetaFormSet = modelformset_factory(
     absolute_max=MUSCLES_PAGE_SIZE,
 )
 PENDING_IMPORT_KEY = "pending_import"
+UNDO_STASHES_KEY = "undo_stashes"
 SESSIONS_PAGE_SIZE = 25
 TOO_LARGE_MESSAGE = "CSV export must be 10 MB or smaller. Choose a smaller file."
 PREVIEW_MISSING_MESSAGE = "Your preview expired or was not found. Upload the CSV again."
@@ -56,6 +66,24 @@ def _expired(request, import_id):
     _discard_pending(request, import_id)
     messages.error(request, "This preview expired. Upload the CSV again.")
     return redirect("upload")
+
+
+def _available_undo_stashes(request):
+    return {
+        stash_id: info
+        for stash_id, info in request.session.get(UNDO_STASHES_KEY, {}).items()
+        if pending.stash_available(stash_id)
+    }
+
+
+def _forget_undo_stash(request, stash_id):
+    stashes = request.session.get(UNDO_STASHES_KEY, {})
+    if stash_id in stashes:
+        stashes.pop(stash_id)
+        if stashes:
+            request.session[UNDO_STASHES_KEY] = stashes
+        else:
+            request.session.pop(UNDO_STASHES_KEY, None)
 
 
 def _optional_date(value):
@@ -157,7 +185,7 @@ def preview(request):
             return _expired(request, import_id)
         try:
             result = import_workouts_csv(request.user, raw)
-        except (EmptyImportError, InvalidCSVError) as exc:
+        except (EmptyImportError, ImportLimitError, InvalidCSVError) as exc:
             messages.error(request, str(exc))
             _discard_pending(request, import_id)
             return redirect("upload")
@@ -166,12 +194,30 @@ def preview(request):
                 raise
             messages.error(request, "The database was busy, please try again")
             return redirect("preview")
+        except IntegrityError:
+            messages.error(
+                request, "Another import landed at the same time. Confirm again to merge."
+            )
+            return redirect("preview")
         _discard_pending(request, import_id)
-        messages.success(
-            request,
-            f"Imported {result.sessions} sessions and {result.sets} sets.",
+        message = (
+            f"Imported {result.added_sessions} session{'' if result.added_sessions == 1 else 's'} "
+            f"and {result.added_sets} set{'' if result.added_sets == 1 else 's'}."
         )
+        notes = []
+        if result.skipped_sets:
+            notes.append(f"{result.skipped_sets} skipped as already stored or repeated in the file")
+        if result.conflicted:
+            plural = "" if result.conflicted == 1 else "s"
+            notes.append(f"{result.conflicted} conflict{plural} kept as stored")
+        if notes:
+            message += f" ({'; '.join(notes)})"
+        messages.success(request, message)
         return redirect("sessions")
+    raw = pending.load_csv(import_id)
+    if raw is None:
+        return _expired(request, import_id)
+    comparison = compare_import(request.user, parse_workouts(raw))
     return render(
         request,
         "workouts/preview.html",
@@ -181,6 +227,7 @@ def preview(request):
             "fingerprint": stored["fingerprint"],
             "current_sessions": WorkoutSession.objects.filter(owner=request.user).count(),
             "current_sets": WorkoutSet.objects.filter(owner=request.user).count(),
+            "comparison": comparison,
         },
     )
 
@@ -188,6 +235,14 @@ def preview(request):
 @login_required
 def sessions(request):
     pending.purge_stale()
+    undo_stashes = [
+        {
+            "id": stash_id,
+            "session": info["session"],
+            "deleted_at": datetime.fromisoformat(info["at"]),
+        }
+        for stash_id, info in reversed(_available_undo_stashes(request).items())
+    ]
     owned = WorkoutSession.objects.filter(owner=request.user)
     has_data = owned.exists()
     program = request.GET.get("program", "").strip()
@@ -223,6 +278,7 @@ def sessions(request):
             "query": query,
             "date_from": date_from.isoformat() if date_from else "",
             "date_to": date_to.isoformat() if date_to else "",
+            "undo_stashes": undo_stashes,
         },
     )
 
@@ -254,6 +310,91 @@ def delete_sessions(request):
         request,
         f"Deleted {session_total} session{'' if session_total == 1 else 's'} "
         f"and {set_total} set{'' if set_total == 1 else 's'}.",
+    )
+    return redirect("sessions")
+
+
+@login_required
+@require_POST
+def delete_session(request, pk):
+    stash_id = secrets.token_urlsafe(16)
+    confirmed = request.POST.get("confirm") == "1"
+    keep_stash = False
+    try:
+        with transaction.atomic():
+            session = get_object_or_404(WorkoutSession, owner=request.user, pk=pk)
+            payload = stash_session(request.user, session)
+            too_big = len(json.dumps(payload).encode("utf-8")) > pending.STASH_MAX_BYTES
+            if too_big and not confirmed:
+                params = request.GET.copy()
+                params["confirm_delete"] = str(session.pk)
+                params["open"] = str(session.pk)
+                return redirect(f"{reverse('sessions')}?{params.urlencode()}")
+            stashed = not too_big and pending.save_stash(stash_id, payload)
+            if not stashed and not confirmed:
+                messages.error(
+                    request, "The undo backup could not be written, so the session was not deleted."
+                )
+                return redirect("sessions")
+            set_total = len(payload["sets"])
+            session.delete()
+        keep_stash = stashed
+    except OperationalError as exc:
+        if "lock" not in str(exc).lower():
+            raise
+        messages.error(request, "The database was busy. Please try deleting the session again.")
+        return redirect("sessions")
+    finally:
+        if not keep_stash:
+            pending.discard_stash(stash_id)
+    if keep_stash:
+        stashes = _available_undo_stashes(request)
+        stashes[stash_id] = {"session": str(session), "at": timezone.now().isoformat()}
+        request.session[UNDO_STASHES_KEY] = stashes
+    message = f"Deleted {session} ({set_total} set{'' if set_total == 1 else 's'})."
+    if not keep_stash:
+        message += " No undo backup was kept."
+    messages.success(request, message)
+    return redirect("sessions")
+
+
+@login_required
+@require_POST
+def undo_delete(request):
+    stash_id = request.POST.get("stash_id", "")
+    if not stash_id:
+        messages.info(request, "There is nothing to undo.")
+        return redirect("sessions")
+    payload = pending.load_stash(stash_id)
+    if payload is None or payload.get("owner_id") != request.user.id:
+        _forget_undo_stash(request, stash_id)
+        messages.error(request, "The undo backup expired or was not found.")
+        return redirect("sessions")
+    try:
+        added = restore_stash(request.user, payload)
+    except OperationalError as exc:
+        if "lock" not in str(exc).lower():
+            raise
+        messages.error(request, "The database was busy. Please try restoring the session again.")
+        return redirect("sessions")
+    except ImportLimitError:
+        messages.error(
+            request,
+            "The undo backup cannot be restored yet: the combined volume is out of range. "
+            "Remove the overlapping session and try again; the backup is kept until it expires.",
+        )
+        return redirect("sessions")
+    except KeyError, TypeError, ValueError, InvalidOperation:
+        pending.discard_stash(stash_id)
+        _forget_undo_stash(request, stash_id)
+        messages.error(request, "The undo backup could not be read.")
+        return redirect("sessions")
+    pending.discard_stash(stash_id)
+    _forget_undo_stash(request, stash_id)
+    messages.success(
+        request,
+        f"Restored {payload['session']['workout_name']} "
+        f"with {added} set{'' if added == 1 else 's'}.",
     )
     return redirect("sessions")
 

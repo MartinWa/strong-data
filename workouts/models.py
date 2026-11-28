@@ -55,6 +55,9 @@ class WorkoutSession(models.Model):
     program = models.CharField(max_length=255)
     workout_name = models.CharField(max_length=255)
     start_time = models.DateTimeField()
+    import_time_zone = models.CharField(
+        max_length=64, default=timezone.get_default_timezone_name, editable=False
+    )
     duration_min = models.IntegerField(null=True, blank=True)
     set_count = models.IntegerField(default=0)
     total_volume_kg = models.DecimalField(max_digits=12, decimal_places=2, default=0)
@@ -107,6 +110,7 @@ class WorkoutSet(models.Model):
         related_name="sets",
     )
     set_order = models.IntegerField()
+    source_set_order = models.IntegerField(null=True, editable=False)
     weight_kg = models.DecimalField(max_digits=8, decimal_places=2, null=True, blank=True)
     reps = models.IntegerField(default=0)
     rpe = models.DecimalField(max_digits=3, decimal_places=1, null=True, blank=True)
@@ -125,6 +129,10 @@ class WorkoutSet(models.Model):
             models.CheckConstraint(condition=models.Q(reps__gte=0), name="check_set_reps_positive"),
             models.CheckConstraint(
                 condition=models.Q(volume_kg__gte=0), name="check_set_volume_positive"
+            ),
+            models.UniqueConstraint(
+                fields=["session", "exercise", "set_order", "set_time"],
+                name="uniq_set_session_exercise_order_time",
             ),
         ]
 

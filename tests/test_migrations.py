@@ -1,10 +1,25 @@
+from datetime import UTC, date, datetime
+from decimal import Decimal
+from sqlite3 import SQLITE_LIMIT_VARIABLE_NUMBER
+
 import pytest
-from django.db import connection
+from django.db import IntegrityError, connection, transaction
 from django.db.migrations.executor import MigrationExecutor
+from django.test import override_settings
 
 MERGE_BEFORE = [("workouts", "0002_alter_apitoken_prefix")]
 MERGE_AFTER = [("workouts", "0003_merge_duplicate_muscle_groups")]
 SPLIT_AFTER = [("workouts", "0004_split_core_into_abs")]
+DEDUP_BEFORE = [("workouts", "0004_split_core_into_abs")]
+DEDUP_AFTER = [("workouts", "0005_workoutset_unique_set_key")]
+LATEST = [("workouts", "0006_workoutsession_import_time_zone")]
+
+
+@pytest.fixture(autouse=True)
+def restore_workout_schema(transactional_db):
+    yield
+    executor = MigrationExecutor(connection)
+    executor.migrate(executor.loader.graph.leaf_nodes())
 
 
 @pytest.mark.django_db(transaction=True)
@@ -85,3 +100,128 @@ def test_core_splits_into_abs_for_flexion_exercises():
         "Side Bend (Dumbbell)": "Core",
         "Chest Fly": "Chest",
     }
+
+
+@pytest.mark.django_db(transaction=True)
+def test_duplicate_set_keys_are_renumbered_or_dropped_and_totals_recomputed():
+    executor = MigrationExecutor(connection)
+    executor.migrate(DEDUP_BEFORE)
+    apps = executor.loader.project_state(DEDUP_BEFORE).apps
+    User = apps.get_model("auth", "User")
+    WorkoutSession = apps.get_model("workouts", "WorkoutSession")
+    Exercise = apps.get_model("workouts", "Exercise")
+    WorkoutSet = apps.get_model("workouts", "WorkoutSet")
+    user = User.objects.create(username="alice")
+    session = WorkoutSession.objects.create(
+        owner_id=user.pk,
+        session_date=date(2026, 1, 5),
+        program="Push Day",
+        workout_name="Push Day #1",
+        start_time=datetime(2026, 1, 5, 8, 0, tzinfo=UTC),
+        set_count=99,
+        total_volume_kg=Decimal("12345.00"),
+    )
+    exercise = Exercise.objects.create(owner_id=user.pk, name="Bench Press (Barbell)")
+    shared = {
+        "owner_id": user.pk,
+        "session_id": session.pk,
+        "exercise_id": exercise.pk,
+        "set_order": 1,
+        "set_time": datetime(2026, 1, 5, 8, 30, tzinfo=UTC),
+        "reps": 5,
+    }
+    first = WorkoutSet.objects.create(
+        **shared, weight_kg=Decimal("80.00"), volume_kg=Decimal("400.00")
+    )
+    renumbered = WorkoutSet.objects.create(
+        **shared, weight_kg=Decimal("82.00"), volume_kg=Decimal("410.00")
+    )
+    WorkoutSet.objects.create(**shared, weight_kg=Decimal("82.00"), volume_kg=Decimal("410.00"))
+    other = WorkoutSet.objects.create(
+        **{**shared, "set_order": 2, "set_time": datetime(2026, 1, 5, 8, 35, tzinfo=UTC)},
+        weight_kg=Decimal("80.00"),
+        volume_kg=Decimal("400.00"),
+    )
+    same_rounded_weight = WorkoutSet.objects.create(
+        **shared, weight_kg=Decimal("80.004"), volume_kg=Decimal("400.02")
+    )
+
+    executor = MigrationExecutor(connection)
+    executor.migrate(DEDUP_AFTER)
+    apps = executor.loader.project_state(DEDUP_AFTER).apps
+    WorkoutSet = apps.get_model("workouts", "WorkoutSet")
+    WorkoutSession = apps.get_model("workouts", "WorkoutSession")
+
+    rows = list(WorkoutSet.objects.filter(session_id=session.pk).order_by("id"))
+    assert [row.pk for row in rows] == [first.pk, renumbered.pk, other.pk, same_rounded_weight.pk]
+    assert rows[0].set_order == 1
+    assert rows[0].source_set_order is None
+    assert rows[0].weight_kg == Decimal("80.00")
+    assert rows[1].weight_kg == Decimal("82.00")
+    assert rows[1].set_order == 3
+    assert rows[1].source_set_order == 1
+    assert rows[3].set_order == 4
+    assert rows[3].source_set_order == 1
+    assert rows[3].weight_kg == Decimal("80.00")
+    assert rows[3].volume_kg == Decimal("400.02")
+    session = WorkoutSession.objects.get(pk=session.pk)
+    assert session.set_count == 4
+    assert session.total_volume_kg == Decimal("1610.02")
+    assert any(
+        constraint.name == "uniq_set_session_exercise_order_time"
+        for constraint in WorkoutSet._meta.constraints
+    )
+    with pytest.raises(IntegrityError), transaction.atomic():
+        WorkoutSet.objects.create(**shared, weight_kg=Decimal("90.00"), volume_kg=Decimal("450.00"))
+
+
+@pytest.mark.django_db(transaction=True)
+def test_set_key_migration_batches_queries_and_sets_the_legacy_import_zone():
+    executor = MigrationExecutor(connection)
+    executor.migrate(DEDUP_BEFORE)
+    apps = executor.loader.project_state(DEDUP_BEFORE).apps
+    User = apps.get_model("auth", "User")
+    WorkoutSession = apps.get_model("workouts", "WorkoutSession")
+    Exercise = apps.get_model("workouts", "Exercise")
+    WorkoutSet = apps.get_model("workouts", "WorkoutSet")
+    user = User.objects.create(username="volume")
+    exercise = Exercise.objects.create(owner_id=user.pk, name="Bench")
+    start_time = datetime(2026, 1, 5, 8, 30, tzinfo=UTC)
+    sessions = WorkoutSession.objects.bulk_create(
+        WorkoutSession(
+            owner_id=user.pk,
+            session_date=start_time.date(),
+            workout_name=f"Session {index}",
+            start_time=start_time,
+            set_count=2,
+        )
+        for index in range(501)
+    )
+    WorkoutSet.objects.bulk_create(
+        WorkoutSet(
+            owner_id=user.pk,
+            session_id=session.pk,
+            exercise_id=exercise.pk,
+            set_order=1,
+            set_time=start_time,
+        )
+        for session in sessions
+        for _ in range(2)
+    )
+
+    sqlite = connection.connection
+    original_limit = sqlite.setlimit(SQLITE_LIMIT_VARIABLE_NUMBER, 500)
+    try:
+        with override_settings(TIME_ZONE="Europe/Stockholm"):
+            executor = MigrationExecutor(connection)
+            executor.migrate(LATEST)
+    finally:
+        sqlite.setlimit(SQLITE_LIMIT_VARIABLE_NUMBER, original_limit)
+
+    apps = executor.loader.project_state(LATEST).apps
+    migrated_sessions = apps.get_model("workouts", "WorkoutSession").objects
+    migrated_sets = apps.get_model("workouts", "WorkoutSet").objects
+    assert migrated_sets.count() == len(sessions)
+    assert migrated_sessions.filter(
+        set_count=1, import_time_zone="Europe/Stockholm"
+    ).count() == len(sessions)

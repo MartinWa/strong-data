@@ -131,9 +131,7 @@ jobs:
           push: false
           provenance: false
           tags: strong-data:ci
-          no-cache: ${{ github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' }}
-          cache-from: type=gha,scope=ci-production
-          cache-to: type=gha,scope=ci-production,mode=max
+          no-cache: true
           github-token: ""
       - name: Verify non-root startup, automatic migrations and hardened serving
         run: |

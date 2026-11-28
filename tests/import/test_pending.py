@@ -349,6 +349,61 @@ def test_summarize_counts_affected_rows_separately_from_warning_messages():
     assert [group["count"] for group in summary["warning_groups"]] == [1, 1]
 
 
+def test_stash_round_trip_and_rejects_invalid_ids(pending_root):
+    payload = {"session": {"workout_name": "Push Day"}, "sets": []}
+
+    assert pending.save_stash(IMPORT_ID, payload)
+    assert pending.load_stash(IMPORT_ID) == payload
+    assert pending.load_stash("../../etc/passwd") is None
+    assert pending.load_stash("a" * 15) is None
+
+    pending.discard_stash(IMPORT_ID)
+    assert pending.load_stash(IMPORT_ID) is None
+
+
+def test_stash_refuses_oversized_payloads(pending_root, monkeypatch):
+    monkeypatch.setattr(pending, "STASH_MAX_BYTES", 10)
+
+    assert not pending.save_stash(IMPORT_ID, {"data": "x" * 100})
+    assert pending.load_stash(IMPORT_ID) is None
+
+
+def test_corrupt_stash_loads_as_none(pending_root):
+    pending.save_stash(IMPORT_ID, {"sets": []})
+    (pending.undo_dir() / f"{IMPORT_ID}.json").write_text("{not json", encoding="utf-8")
+
+    assert pending.load_stash(IMPORT_ID) is None
+
+
+def test_purge_stale_keeps_fresh_undo_stashes_while_expiring_pending_files(pending_root):
+    pending.save(IMPORT_ID, SAMPLE, parse_workouts(SAMPLE))
+    pending.save_stash(OTHER_ID, {"sets": []})
+    expired = time.time() - pending.PENDING_TTL_SECONDS - 60
+    for suffix in ("csv", "json"):
+        os.utime(pending_root / f"{IMPORT_ID}.{suffix}", (expired, expired))
+
+    assert pending.purge_stale() == 2
+
+    assert pending.load_stash(OTHER_ID) == {"sets": []}
+
+
+def test_purge_stale_expires_undo_stashes_with_their_own_ttl(pending_root):
+    pending.save_stash(IMPORT_ID, {"sets": []})
+    pending.save_stash(OTHER_ID, {"sets": []})
+    expired = time.time() - pending.UNDO_TTL_SECONDS - 60
+    stale_path = pending.undo_dir() / f"{IMPORT_ID}.json"
+    os.utime(stale_path, (expired, expired))
+
+    assert not pending.stash_available(IMPORT_ID)
+    assert pending.load_stash(IMPORT_ID) is None
+    assert stale_path.exists()
+
+    assert pending.purge_stale() == 1
+
+    assert not stale_path.exists()
+    assert pending.load_stash(OTHER_ID) == {"sets": []}
+
+
 def test_summarize_counts_every_warning_but_caps_the_listed_lines():
     rows = [
         f"2026-01-05 09:{minute:02d}:00,Push Day,54m,Exercise {minute:02d},1,80,5,0,0,99"
